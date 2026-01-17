@@ -27,8 +27,9 @@ function App() {
 
   // Configuration
   const CONFIG = {
-    TARGET_WIDTH: 1200,
-    TARGET_HEIGHT: 1800,
+    // Increased Resolution for Crisper Prints
+    TARGET_WIDTH: 1600, // ~400 DPI for 4"
+    TARGET_HEIGHT: 2400, // ~400 DPI for 6"
     // Relaxed filters for better local detection
     MIN_AREA_RATIO: 0.01, // 1%
     MAX_AREA_RATIO: 0.99  // 99%
@@ -110,7 +111,7 @@ function App() {
       let imageSrc = null;
 
       if (uploadedFile.type === 'application/pdf') {
-        addLog("Detected PDF. Converting to image...");
+        addLog("Detected PDF. Converting to image (High Res)...");
         imageSrc = await convertPdfToImage(uploadedFile);
       } else if (uploadedFile.type.startsWith('image/')) {
         addLog("Detected Image. Loading...");
@@ -147,8 +148,8 @@ function App() {
     // Render page 1
     const page = await pdf.getPage(1);
     
-    // Scale 3.0 ≈ 216 DPI (Good balance for performance vs quality locally)
-    const viewport = page.getViewport({ scale: 3.0 }); 
+    // Scale 5.0 ≈ 360 DPI (High quality for crisp text)
+    const viewport = page.getViewport({ scale: 5.0 }); 
     
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
