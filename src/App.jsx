@@ -14,7 +14,7 @@ import {
   Image as ImageIcon,
   ArrowRight,
   ShieldCheck,
-  Coffee 
+  Coffee
 } from 'lucide-react';
 
 function App() {
@@ -375,19 +375,24 @@ function App() {
             </div>
           </div>
           
-          {/* Status Badge */}
+          {/* Status Badge & Coffee Link */}
           <div className="flex items-center gap-2">
-            {status === 'loading' && (
+            {status === 'loading' ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Initializing Engine
               </span>
-            )}
-            {status === 'ready' && (
-               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                System Ready
-              </span>
+            ) : (
+              <a 
+                href="https://buymeacoffee.com/cropthislabel" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors"
+              >
+                <Coffee className="w-4 h-4 text-amber-700" />
+                <span className="hidden md:inline">If you found this useful, please consider buying me a coffee.</span>
+                <span className="md:hidden">Buy me a coffee</span>
+              </a>
             )}
           </div>
         </div>
@@ -404,7 +409,7 @@ function App() {
             <div className="mb-2">
               <h2 className="text-2xl font-semibold text-slate-900">Upload Document</h2>
               <p className="text-slate-500 mt-2">
-                Upload a PDF or Image containing a shipping label. We'll automatically detect, crop, and fix the orientation.
+                Upload a PDF or image containing a shipping label. We'll automatically detect, crop, and fix the orientation.
               </p>
             </div>
 
@@ -414,7 +419,7 @@ function App() {
                 <ShieldCheck className="w-5 h-5 text-emerald-700" />
               </div>
               <p className="text-sm font-medium text-emerald-800">
-                Label is processed locally. No data is stored on our servers (because we don't have any)
+                Label is processed locally. No data is stored on our servers (because we don't have any).
               </p>
             </div>
 
@@ -506,7 +511,7 @@ function App() {
               <div>
                 <h2 className="text-2xl font-semibold text-slate-900">Label Output</h2>
                 <p className="text-slate-500 mt-2">
-                  Optimized 4x6" thermal format.
+                  Optimized 4x6 thermal format label.
                 </p>
               </div>
               
@@ -638,21 +643,6 @@ function App() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center w-full flex-none">
-        <p className="text-slate-500 text-sm flex items-center justify-center gap-1.5">
-          If you found this useful, please consider 
-          <a 
-            href="https://buymeacoffee.com/cropthislabel" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-indigo-600 font-medium hover:text-indigo-700 hover:underline transition-colors"
-          >
-            <Coffee className="w-4 h-4" />
-            buying me a coffee
-          </a>
-        </p>
-      </footer>
     </div>
   );
 };
