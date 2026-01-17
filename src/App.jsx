@@ -12,7 +12,8 @@ import {
   RotateCw, 
   Printer, 
   Image as ImageIcon,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck 
 } from 'lucide-react';
 
 function App() {
@@ -24,10 +25,11 @@ function App() {
   const [librariesLoaded, setLibrariesLoaded] = useState({ cv: false, pdf: false });
   const processedCanvasRef = useRef(null);
 
-  // Configuration (Matching Python Script)
+  // Configuration
   const CONFIG = {
-    TARGET_WIDTH: 1200,
-    TARGET_HEIGHT: 1800,
+    // Increased Resolution for Crisper Prints
+    TARGET_WIDTH: 1600, // ~400 DPI for 4"
+    TARGET_HEIGHT: 2400, // ~400 DPI for 6"
     // Relaxed filters for better local detection
     MIN_AREA_RATIO: 0.01, // 1%
     MAX_AREA_RATIO: 0.99  // 99%
@@ -35,7 +37,6 @@ function App() {
 
   // --- 1. Load External Libraries (OpenCV.js & PDF.js) ---
   useEffect(() => {
-    // FORCE TITLE UPDATE
     document.title = "Crop This Label";
 
     const loadLibraries = async () => {
@@ -61,7 +62,6 @@ function App() {
         cvScript.src = 'https://docs.opencv.org/4.8.0/opencv.js';
         cvScript.async = true;
         cvScript.onload = () => {
-          // OpenCV takes a moment to initialize WebAssembly
           cv.onRuntimeInitialized = () => {
             setLibrariesLoaded(prev => ({ ...prev, cv: true }));
             addLog("OpenCV Engine loaded.");
@@ -111,7 +111,7 @@ function App() {
       let imageSrc = null;
 
       if (uploadedFile.type === 'application/pdf') {
-        addLog("Detected PDF. Converting to image...");
+        addLog("Detected PDF. Converting to image (High Res)...");
         imageSrc = await convertPdfToImage(uploadedFile);
       } else if (uploadedFile.type.startsWith('image/')) {
         addLog("Detected Image. Loading...");
@@ -121,7 +121,8 @@ function App() {
       }
 
       setOriginalImage(imageSrc);
-      await processImage(imageSrc);
+      // Small delay to ensure UI updates before heavy processing freezes thread
+      setTimeout(() => processImage(imageSrc), 100);
 
     } catch (err) {
       console.error(err);
@@ -147,8 +148,8 @@ function App() {
     // Render page 1
     const page = await pdf.getPage(1);
     
-    // Scale 3.0 ≈ 216 DPI (Good balance for performance vs quality locally)
-    const viewport = page.getViewport({ scale: 3.0 }); 
+    // Scale 5.0 ≈ 360 DPI (High quality for crisp text)
+    const viewport = page.getViewport({ scale: 5.0 }); 
     
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
@@ -169,13 +170,18 @@ function App() {
     const oldStatus = status;
     setStatus('processing');
 
-    return new Promise((resolve) => {
+    // Use timeout to allow UI to show processing state
+    setTimeout(() => {
       const img = new Image();
       img.onload = () => {
         const cv = window.cv;
         let src = cv.imread(img);
         let dst = new cv.Mat();
         
+        // Note: OpenCV rotate codes
+        // ROTATE_90_CLOCKWISE = 0
+        // ROTATE_180 = 1
+        // ROTATE_90_COUNTERCLOCKWISE = 2
         let rotateCode = direction === 'left' ? cv.ROTATE_90_COUNTERCLOCKWISE : cv.ROTATE_90_CLOCKWISE;
         
         cv.rotate(src, dst, rotateCode);
@@ -186,10 +192,9 @@ function App() {
         src.delete();
         dst.delete();
         setStatus(oldStatus);
-        resolve();
       };
       img.src = processedImage;
-    });
+    }, 50);
   };
 
   const handlePrint = () => {
@@ -197,7 +202,12 @@ function App() {
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert("Please allow popups to print.");
+      // Fallback for popups blocked
+      const confirmPrint = window.confirm("Pop-up blocked. Open print view in current tab?");
+      if(confirmPrint) {
+         // This replaces current window content which is destructive but a fallback
+         document.write(`<img src="${processedImage}" onload="window.print();" style="width:100%"/>`);
+      }
       return;
     }
 
@@ -394,6 +404,16 @@ function App() {
               <h2 className="text-2xl font-semibold text-slate-900">Upload Document</h2>
               <p className="text-slate-500 mt-2">
                 Upload a PDF or Image containing a shipping label. We'll automatically detect, crop, and fix the orientation.
+              </p>
+            </div>
+
+            {/* Prominent Privacy Notice */}
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex flex-row items-center gap-3 shadow-sm">
+              <div className="bg-emerald-100 p-2 rounded-full flex-shrink-0">
+                <ShieldCheck className="w-5 h-5 text-emerald-700" />
+              </div>
+              <p className="text-sm font-medium text-emerald-800">
+                Label is processed locally. No data is stored on our servers.
               </p>
             </div>
 
@@ -612,13 +632,6 @@ function App() {
 
               </div>
             </div>
-            
-            {/* Disclaimer / Info */}
-            {status === 'success' && (
-              <p className="text-center text-xs text-slate-400 mt-4">
-                Label is processed locally. No data is stored on our servers.
-              </p>
-            )}
 
           </div>
         </div>
