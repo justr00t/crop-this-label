@@ -35,6 +35,9 @@ function App() {
 
   // --- 1. Load External Libraries (OpenCV.js & PDF.js) ---
   useEffect(() => {
+    // FORCE TITLE UPDATE
+    document.title = "Crop This Label";
+
     const loadLibraries = async () => {
       addLog("Initializing environment...");
 
@@ -261,9 +264,7 @@ function App() {
           let contours = new cv.MatVector();
           let hierarchy = new cv.Mat();
           
-          // CRITICAL FIX: Changed RETR_EXTERNAL to RETR_LIST
-          // RETR_EXTERNAL only finds the outer border. If the page has a black border,
-          // the label INSIDE that border is ignored. RETR_LIST finds everything.
+          // RETR_LIST finds everything (including inside borders)
           cv.findContours(dst, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
           addLog(`Found ${contours.size()} potential contours.`);
@@ -291,8 +292,6 @@ function App() {
           }
 
           // --- FALLBACK LOGIC ---
-          // If no distinct label found, but the image is roughly 4x6 or 6x4,
-          // assume the user uploaded an already-cropped label that failed detection.
           if (candidates.length === 0) {
             addLog("No specific label contour found. Checking for fallback...");
             const pageRatio = src.cols / src.rows;
@@ -352,8 +351,8 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-700">
       
-      {/* Top Navigation Bar */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      {/* Top Navigation Bar - FIXED: z-50 to stay on top */}
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-600 p-2 rounded-lg text-white shadow-sm">
