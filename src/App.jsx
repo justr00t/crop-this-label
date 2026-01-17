@@ -13,7 +13,8 @@ import {
   Printer, 
   Image as ImageIcon,
   ArrowRight,
-  ShieldCheck 
+  ShieldCheck,
+  Coffee 
 } from 'lucide-react';
 
 function App() {
@@ -359,10 +360,10 @@ function App() {
 
   // --- UI Components ---
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-700">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-700 flex flex-col">
       
       {/* Top Navigation Bar - FIXED: z-50 to stay on top */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 flex-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-600 p-2 rounded-lg text-white shadow-sm">
@@ -393,7 +394,7 @@ function App() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 flex-grow w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* LEFT COLUMN: Input Section */}
@@ -636,6 +637,22 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center w-full flex-none">
+        <p className="text-slate-500 text-sm flex items-center justify-center gap-1.5">
+          If you found this useful, please consider 
+          <a 
+            href="https://buymeacoffee.com/cropthislabel" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-indigo-600 font-medium hover:text-indigo-700 hover:underline transition-colors"
+          >
+            <Coffee className="w-4 h-4" />
+            buying me a coffee
+          </a>
+        </p>
+      </footer>
     </div>
   );
 };
