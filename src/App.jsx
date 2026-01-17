@@ -413,7 +413,7 @@ function App() {
                 <ShieldCheck className="w-5 h-5 text-emerald-700" />
               </div>
               <p className="text-sm font-medium text-emerald-800">
-                Label is processed locally. No data is stored on our servers.
+                Label is processed locally. No data is stored on our servers (because we don't have any)
               </p>
             </div>
 
