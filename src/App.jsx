@@ -269,49 +269,108 @@ function App() {
           cv.GaussianBlur(gray, blur, ksize, 0, 0, cv.BORDER_DEFAULT);
           cv.threshold(blur, thresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
 
-          let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(25, 25));
+          // 1. Use a small kernel just to connect text characters into words/lines
+          let dynamicKSize = Math.max(5, Math.floor(Math.min(src.cols, src.rows) * 0.005));
+          let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(dynamicKSize, dynamicKSize));
+          
           cv.dilate(thresh, dst, kernel);
 
           let contours = new cv.MatVector();
           let hierarchy = new cv.Mat();
           
-          // RETR_LIST finds everything (including inside borders)
-          cv.findContours(dst, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+          // 2. Find external contours (bounding boxes of text blocks, barcodes)
+          cv.findContours(dst, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-          addLog(`Found ${contours.size()} potential contours.`);
-
-          let candidates = [];
           const totalArea = src.cols * src.rows;
+          let rects = [];
 
+          // 3. Filter out tiny noise
           for (let i = 0; i < contours.size(); ++i) {
             let c = contours.get(i);
             let rect = cv.boundingRect(c);
             let area = rect.width * rect.height;
-
-            // Area Filter
-            if (area < (totalArea * CONFIG.MIN_AREA_RATIO) || area > (totalArea * CONFIG.MAX_AREA_RATIO)) {
-              continue;
+            
+            // Keep elements larger than 0.1% of the page
+            if (area > totalArea * 0.001) {
+              rects.push(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
             }
+          }
 
-            // Relaxed Aspect Ratio Filter
+          addLog(`Found ${rects.length} significant elements. Grouping...`);
+
+          // 4. Proximity Grouping Algorithm
+          // FedEx labels have massive horizontal gaps between text and barcodes.
+          // Instead of smearing pixels, we logically group bounding boxes that are near each other.
+          let merged = true;
+          while (merged) {
+            merged = false;
+            for (let i = 0; i < rects.length; i++) {
+              for (let j = i + 1; j < rects.length; j++) {
+                let r1 = rects[i];
+                let r2 = rects[j];
+                
+                // Tolerances: 25% of width horizontally, 5% of height vertically
+                let inflateX = src.cols * 0.25; 
+                let inflateY = src.rows * 0.05; 
+                
+                // If inflated r1 intersects with r2, they belong to the same label
+                if (
+                  r1.x - inflateX < r2.x + r2.width &&
+                  r1.x + r1.width + inflateX > r2.x &&
+                  r1.y - inflateY < r2.y + r2.height &&
+                  r1.y + r1.height + inflateY > r2.y
+                ) {
+                  // Merge r2 into r1
+                  let minX = Math.min(r1.x, r2.x);
+                  let minY = Math.min(r1.y, r2.y);
+                  let maxX = Math.max(r1.x + r1.width, r2.x + r2.width);
+                  let maxY = Math.max(r1.y + r1.height, r2.y + r2.height);
+                  
+                  rects[i] = new cv.Rect(minX, minY, maxX - minX, maxY - minY);
+                  
+                  // Remove r2 and restart the loop
+                  rects.splice(j, 1);
+                  merged = true;
+                  break; 
+                }
+              }
+              if (merged) break;
+            }
+          }
+
+          addLog(`Grouped into ${rects.length} candidate regions.`);
+
+          // 5. Score candidates based on Size and Aspect Ratio
+          let bestRect = null;
+          let bestScore = -1;
+
+          for (let rect of rects) {
+            let area = rect.width * rect.height;
             let ratio = rect.width / rect.height;
-            if (ratio < 0.2 || ratio > 4.0) { 
-              continue;
-            }
+            let normalizedRatio = ratio > 1 ? ratio : 1 / ratio; // Make ratio always >= 1
 
-            candidates.push({ area, rect });
+            // A valid label should be a significant portion of the page (10% to 95%)
+            if (area > totalArea * 0.10 && area < totalArea * 0.95) {
+               // Perfect 4x6 label has a 1.5 ratio. Penalize deviations.
+               let ratioDiff = Math.abs(normalizedRatio - 1.5);
+               let score = area / (1 + ratioDiff); 
+               
+               if (score > bestScore) {
+                 bestScore = score;
+                 bestRect = rect;
+               }
+            }
           }
 
           // --- FALLBACK LOGIC ---
-          if (candidates.length === 0) {
+          if (!bestRect) {
             addLog("No specific label contour found. Checking for fallback...");
             const pageRatio = src.cols / src.rows;
             
             // Check if page itself is roughly label-shaped (0.4 to 2.5 ratio)
             if (pageRatio > 0.4 && pageRatio < 2.5) {
                addLog("Fallback triggered: Using full image as label.");
-               let fullRect = new cv.Rect(0, 0, src.cols, src.rows);
-               candidates.push({ area: totalArea, rect: fullRect });
+               bestRect = new cv.Rect(0, 0, src.cols, src.rows);
             } else {
                // Cleanup and fail
                src.delete(); dst.delete(); gray.delete(); blur.delete(); 
@@ -320,11 +379,18 @@ function App() {
             }
           }
 
-          candidates.sort((a, b) => b.area - a.area);
-          let bestRect = candidates[0].rect;
           addLog(`Target locked. Cropping area: ${Math.round(bestRect.width)}x${Math.round(bestRect.height)}`);
 
-          let roi = src.roi(bestRect);
+          // 6. Add a tiny 0.5% padding & Crop
+          let padX = Math.floor(src.cols * 0.005);
+          let padY = Math.floor(src.rows * 0.005);
+          let finalX = Math.max(0, bestRect.x - padX);
+          let finalY = Math.max(0, bestRect.y - padY);
+          let finalWidth = Math.min(src.cols - finalX, bestRect.width + 2 * padX);
+          let finalHeight = Math.min(src.rows - finalY, bestRect.height + 2 * padY);
+          
+          let paddedRect = new cv.Rect(finalX, finalY, finalWidth, finalHeight);
+          let roi = src.roi(paddedRect);
           
           if (roi.cols > roi.rows) {
             addLog("Detected Landscape orientation. Rotating 90 degrees...");
@@ -333,6 +399,62 @@ function App() {
             roi.delete();
             roi = rotated;
           }
+
+          // --- FIX: DETECT UPSIDE-DOWN LABELS ---
+          // Tracking barcodes are the largest "ink" blocks and are placed in the lower half of labels.
+          // We find the largest contour and check its Y-center to determine orientation.
+          try {
+            let grayRoi = new cv.Mat();
+            cv.cvtColor(roi, grayRoi, cv.COLOR_RGBA2GRAY, 0);
+            let threshRoi = new cv.Mat();
+            cv.threshold(grayRoi, threshRoi, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+
+            // Use a horizontally-biased kernel. 
+            // This easily fuses the tall vertical lines of a 1D barcode into one massive solid rectangle,
+            // while preventing separate lines of text (like addresses) from merging into a huge vertical blob.
+            let ksizeRoiX = Math.max(5, Math.floor(roi.cols * 0.05));
+            let ksizeRoiY = Math.max(3, Math.floor(roi.rows * 0.005));
+            let kernelRoi = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(ksizeRoiX, ksizeRoiY));
+            let dilatedRoi = new cv.Mat();
+            cv.dilate(threshRoi, dilatedRoi, kernelRoi);
+
+            let contoursRoi = new cv.MatVector();
+            let hierarchyRoi = new cv.Mat();
+            cv.findContours(dilatedRoi, contoursRoi, hierarchyRoi, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+            let maxArea = 0;
+            let barcodeCenterY = 0;
+
+            for (let i = 0; i < contoursRoi.size(); ++i) {
+                let c = contoursRoi.get(i);
+                let rect = cv.boundingRect(c);
+                let area = rect.width * rect.height;
+                let ratio = rect.width / rect.height;
+                
+                // The main tracking barcode is wide (ratio > 1.2).
+                // This filters out square blobs (like the FedEx 'G' box or merged return addresses)
+                if (ratio > 1.2 && area > maxArea) {
+                    maxArea = area;
+                    barcodeCenterY = rect.y + (rect.height / 2);
+                }
+            }
+
+            // If the center of the largest wide block (the barcode) is clearly in the top half, it's upside down!
+            if (maxArea > 0 && barcodeCenterY < roi.rows * 0.45) {
+                 addLog("Detected upside-down label. Auto-rotating 180 degrees...");
+                 let rotated180 = new cv.Mat();
+                 cv.rotate(roi, rotated180, cv.ROTATE_180);
+                 roi.delete();
+                 roi = rotated180;
+            }
+
+            // Cleanup memory
+            grayRoi.delete(); threshRoi.delete(); kernelRoi.delete(); dilatedRoi.delete();
+            contoursRoi.delete(); hierarchyRoi.delete();
+          } catch(e) {
+            console.warn("Upside down detection skipped: ", e);
+          }
+          // --------------------------------------
 
           let final = new cv.Mat();
           let finalSize = new cv.Size(CONFIG.TARGET_WIDTH, CONFIG.TARGET_HEIGHT);
