@@ -1,770 +1,554 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, 
-  Download, 
-  FileText, 
   Loader2, 
   RefreshCw, 
   Scissors, 
   CheckCircle2, 
-  AlertCircle, 
-  RotateCcw, 
   RotateCw, 
   Printer, 
-  Image as ImageIcon,
-  ArrowRight,
-  ShieldCheck,
-  Coffee
+  ArrowRight, 
+  ShieldCheck, 
+  BrainCircuit, 
+  AlertTriangle, 
+  Sparkles, 
+  Coffee, 
+  FlipVertical
 } from 'lucide-react';
 
-function App() {
-  const [status, setStatus] = useState('loading'); // loading, ready, processing, success, error
-  const [logs, setLogs] = useState([]);
-  const [file, setFile] = useState(null);
-  const [originalImage, setOriginalImage] = useState(null);
-  const [processedImage, setProcessedImage] = useState(null);
-  const [librariesLoaded, setLibrariesLoaded] = useState({ cv: false, pdf: false });
-  const processedCanvasRef = useRef(null);
+// ============================================================================
+// 🧠 WEB WORKER LOGIC
+// ============================================================================
+const WORKER_CODE = `
+  importScripts('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js');
 
-  // Configuration
-  const CONFIG = {
-    // Increased Resolution for Crisper Prints
-    TARGET_WIDTH: 1600, // ~400 DPI for 4"
-    TARGET_HEIGHT: 2400, // ~400 DPI for 6"
-    // Relaxed filters for better local detection
-    MIN_AREA_RATIO: 0.01, // 1%
-    MAX_AREA_RATIO: 0.99  // 99%
+  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/';
+  ort.env.wasm.numThreads = 1; 
+  ort.env.wasm.simd = false; 
+  ort.env.wasm.proxy = false;
+
+  const TARGET_SIZE = 640;
+  let session = null;
+
+  self.onmessage = async function(e) {
+    const { imageData, width, height, modelBuffer, pageIndex } = e.data;
+    
+    try {
+      if (!session && modelBuffer) {
+        const modelUint8 = new Uint8Array(modelBuffer);
+        session = await ort.InferenceSession.create(modelUint8, { 
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all'
+        });
+      }
+
+      if (!session) throw new Error("AI session not initialized.");
+      
+      const [tensorData, xRatio, yRatio] = preprocess(imageData, width, height);
+      const tensor = new ort.Tensor('float32', tensorData, [1, 3, TARGET_SIZE, TARGET_SIZE]);
+
+      const results = await session.run({ images: tensor });
+      const output = results[Object.keys(results)[0]].data;
+
+      const candidates = getTopDetections(output, xRatio, yRatio, width, height);
+      tensor.dispose();
+
+      self.postMessage({ type: 'success', payload: { candidates, pageIndex } });
+
+    } catch (error) {
+      self.postMessage({ type: 'error', message: error?.message || "Detection Error", pageIndex });
+    }
   };
 
-  // --- 1. Load External Libraries (OpenCV.js & PDF.js) ---
+  function preprocess(data, width, height) {
+    const tensorData = new Float32Array(3 * TARGET_SIZE * TARGET_SIZE);
+    const xRatio = width / TARGET_SIZE;
+    const yRatio = height / TARGET_SIZE;
+
+    for (let y = 0; y < TARGET_SIZE; y++) {
+      for (let x = 0; x < TARGET_SIZE; x++) {
+        const srcX = Math.floor(x * xRatio);
+        const srcY = Math.floor(y * yRatio);
+        const srcIndex = (srcY * width + srcX) * 4;
+        
+        const dR = (0 * TARGET_SIZE * TARGET_SIZE) + (y * TARGET_SIZE) + x;
+        const dG = (1 * TARGET_SIZE * TARGET_SIZE) + (y * TARGET_SIZE) + x;
+        const dB = (2 * TARGET_SIZE * TARGET_SIZE) + (y * TARGET_SIZE) + x;
+
+        tensorData[dR] = data[srcIndex] / 255.0;
+        tensorData[dG] = data[srcIndex + 1] / 255.0;
+        tensorData[dB] = data[srcIndex + 2] / 255.0;
+      }
+    }
+    return [tensorData, xRatio, yRatio];
+  }
+
+  function getTopDetections(output, xRatio, yRatio, imgWidth, imgHeight) {
+    const numAnchors = 8400;
+    const candidates = [];
+
+    for (let i = 0; i < numAnchors; i++) {
+      const conf = output[4 * numAnchors + i];
+      if (conf > 0.15) {
+        const xc = output[0 * numAnchors + i];
+        const yc = output[1 * numAnchors + i];
+        const w  = output[2 * numAnchors + i];
+        const h  = output[3 * numAnchors + i];
+
+        let x1 = (xc - w / 2) * xRatio;
+        let y1 = (yc - h / 2) * yRatio;
+        let finalW = w * xRatio;
+        let finalH = h * yRatio;
+
+        const px = finalW * 0.01;
+        const py = finalH * 0.01;
+        x1 = Math.max(0, x1 - px);
+        y1 = Math.max(0, y1 - py);
+        finalW = Math.min(imgWidth - x1, finalW + (px * 2));
+        finalH = Math.min(imgHeight - y1, finalH + (py * 2));
+
+        candidates.push({
+          boundingBox: [Math.floor(x1), Math.floor(y1), Math.floor(finalW), Math.floor(finalH)],
+          confidence: conf
+        });
+      }
+    }
+
+    candidates.sort((a, b) => b.confidence - a.confidence);
+
+    const uniqueResults = [];
+    for (const cand of candidates) {
+      const isDuplicate = uniqueResults.some(res => {
+        const xA = Math.max(cand.boundingBox[0], res.boundingBox[0]);
+        const yA = Math.max(cand.boundingBox[1], res.boundingBox[1]);
+        const xB = Math.min(cand.boundingBox[0] + cand.boundingBox[2], res.boundingBox[0] + res.boundingBox[2]);
+        const yB = Math.min(cand.boundingBox[1] + cand.boundingBox[3], res.boundingBox[1] + res.boundingBox[3]);
+        const interArea = Math.max(0, xB - xA) * Math.max(0, yB - yA);
+        const boxAArea = cand.boundingBox[2] * cand.boundingBox[3];
+        const boxBArea = res.boundingBox[2] * res.boundingBox[3];
+        const intersection = interArea / (boxAArea + boxBArea - interArea);
+        return intersection > 0.5;
+      });
+
+      if (!isDuplicate) uniqueResults.push(cand);
+      if (uniqueResults.length >= 3) break;
+    }
+
+    return uniqueResults;
+  }
+`;
+
+function App() {
+  const [status, setStatus] = useState('loading'); 
+  const [originalImage, setOriginalImage] = useState(null);
+  const [processedImage, setProcessedImage] = useState(null);
+  const [pdfReady, setPdfReady] = useState(false);
+  const [modelBuffer, setModelBuffer] = useState(null);
+  const [allDetections, setAllDetections] = useState([]);
+  const [detectionIndex, setDetectionIndex] = useState(0);
+  const [scanningProgress, setScanningProgress] = useState({ current: 0, total: 0 });
+
+  const workerRef = useRef(null);
+  const processedCanvasRef = useRef(null);
+  const pageImagesRef = useRef([]); 
+  const resultsAccumulator = useRef([]);
+  const pagesFinished = useRef(0);
+
+  const MODEL_URL = '/label-model.onnx'; 
+  const COFFEE_URL = 'https://buymeacoffee.com/cropthislabel';
+
+  const CONFIG = {
+    TARGET_WIDTH: 1200, 
+    TARGET_HEIGHT: 1800,
+  };
+
+  const getPdfLib = () => window.pdfjsLib || window['pdfjs-dist/build/pdf'];
+
   useEffect(() => {
-    document.title = "Crop This Label";
+    document.title = "Crop This Label (AI Powered)";
 
-    const loadLibraries = async () => {
-      addLog("Initializing environment...");
+    const initEnvironment = async () => {
+      try {
+        const response = await fetch(MODEL_URL);
+        if (response.ok) {
+          const buffer = await response.arrayBuffer();
+          setModelBuffer(buffer);
+        }
+      } catch (err) {
+        console.warn("AI Model fetch failed. Ensure label-model.onnx is in your public folder.");
+      }
 
-      // Load PDF.js
-      if (!window.pdfjsLib) {
+      if (!getPdfLib()) {
         const pdfScript = document.createElement('script');
         pdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
         pdfScript.onload = () => {
-          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-          setLibrariesLoaded(prev => ({ ...prev, pdf: true }));
-          addLog("PDF Engine loaded.");
+          const lib = getPdfLib();
+          if (lib) {
+            lib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            setPdfReady(true);
+          }
         };
         document.body.appendChild(pdfScript);
       } else {
-        setLibrariesLoaded(prev => ({ ...prev, pdf: true }));
+        setPdfReady(true);
       }
 
-      // Load OpenCV.js
-      if (!window.cv) {
-        const cvScript = document.createElement('script');
-        cvScript.src = 'https://docs.opencv.org/4.8.0/opencv.js';
-        cvScript.async = true;
-        cvScript.onload = () => {
-          cv.onRuntimeInitialized = () => {
-            setLibrariesLoaded(prev => ({ ...prev, cv: true }));
-            addLog("OpenCV Engine loaded.");
-          };
-        };
-        document.body.appendChild(cvScript);
-      } else {
-        setLibrariesLoaded(prev => ({ ...prev, cv: true }));
-      }
+      const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
+      workerRef.current = new Worker(URL.createObjectURL(blob));
+
+      workerRef.current.onmessage = (e) => {
+        const { type, payload } = e.data;
+        if (type === 'success') {
+          const { candidates, pageIndex } = payload;
+          const pageCandidates = candidates.map(c => ({
+            ...c,
+            pageSrc: pageImagesRef.current[pageIndex]
+          }));
+          resultsAccumulator.current = [...resultsAccumulator.current, ...pageCandidates];
+          pagesFinished.current += 1;
+          setScanningProgress(prev => ({ ...prev, current: pagesFinished.current }));
+          if (pagesFinished.current === pageImagesRef.current.length) {
+            finalizeDetections();
+          }
+        } else if (type === 'error') {
+          pagesFinished.current += 1;
+          if (pagesFinished.current === pageImagesRef.current.length) {
+            finalizeDetections();
+          }
+        }
+      };
     };
 
-    loadLibraries();
+    initEnvironment();
+    return () => workerRef.current?.terminate();
   }, []);
 
-  useEffect(() => {
-    if (librariesLoaded.cv && librariesLoaded.pdf) {
-      setStatus('ready');
-      addLog("System Ready. Upload a shipping label.");
+  const finalizeDetections = () => {
+    const sorted = resultsAccumulator.current.sort((a, b) => b.confidence - a.confidence);
+    if (sorted.length === 0) {
+      setStatus('error');
+      return;
     }
-  }, [librariesLoaded]);
-
-  // --- 2. Helper Functions ---
-  const addLog = (msg) => {
-    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    setAllDetections(sorted);
+    setDetectionIndex(0);
+    applyCrop(sorted[0], 0);
   };
+
+  useEffect(() => {
+    if (pdfReady && workerRef.current) setStatus('ready');
+  }, [pdfReady]);
 
   const reset = () => {
-    setFile(null);
     setOriginalImage(null);
     setProcessedImage(null);
+    setAllDetections([]);
+    setDetectionIndex(0);
     setStatus('ready');
-    setLogs([]);
-    addLog("Ready for new file.");
+    pageImagesRef.current = [];
+    resultsAccumulator.current = [];
+    pagesFinished.current = 0;
   };
 
-  // --- 3. File Handling ---
   const handleFileUpload = async (e) => {
     const uploadedFile = e.target.files[0];
     if (!uploadedFile) return;
-
+    
     reset();
-    setFile(uploadedFile);
     setStatus('processing');
-    addLog(`Processing file: ${uploadedFile.name}`);
-
+    
     try {
-      let imageSrc = null;
-
       if (uploadedFile.type === 'application/pdf') {
-        addLog("Detected PDF. Converting to image (High Res)...");
-        imageSrc = await convertPdfToImage(uploadedFile);
-      } else if (uploadedFile.type.startsWith('image/')) {
-        addLog("Detected Image. Loading...");
-        imageSrc = await readFileAsDataURL(uploadedFile);
+        await processPdf(uploadedFile);
       } else {
-        throw new Error("Unsupported file type. Please upload PDF, PNG, or JPG.");
+        const imageSrc = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(uploadedFile);
+        });
+        pageImagesRef.current = [imageSrc];
+        setScanningProgress({ current: 0, total: 1 });
+        dispatchToWorker(imageSrc, 0);
       }
-
-      setOriginalImage(imageSrc);
-      // Small delay to ensure UI updates before heavy processing freezes thread
-      setTimeout(() => processImage(imageSrc), 100);
-
     } catch (err) {
-      console.error(err);
       setStatus('error');
-      addLog(`Error: ${err.message}`);
     }
   };
 
-  const readFileAsDataURL = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const convertPdfToImage = async (file) => {
+  const processPdf = async (file) => {
+    const lib = getPdfLib();
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await window.pdfjsLib.getDocument(arrayBuffer).promise;
-    addLog(`PDF Loaded. Pages: ${pdf.numPages}. Analyzing Page 1...`);
-    
-    // Render page 1
-    const page = await pdf.getPage(1);
-    
-    // Scale 5.0 ≈ 360 DPI (High quality for crisp text)
-    const viewport = page.getViewport({ scale: 5.0 }); 
-    
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-
-    // Fill background with white to handle PDF transparency
-    context.fillStyle = 'white';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    await page.render({ canvasContext: context, viewport: viewport }).promise;
-    return canvas.toDataURL('image/png');
+    const pdf = await lib.getDocument(arrayBuffer).promise;
+    const numPages = pdf.numPages;
+    setScanningProgress({ current: 0, total: numPages });
+    const pages = [];
+    for (let i = 1; i <= numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 4.0 });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: context, viewport: viewport }).promise;
+      pages.push(canvas.toDataURL('image/png'));
+    }
+    pageImagesRef.current = pages;
+    pages.forEach((src, idx) => dispatchToWorker(src, idx));
   };
 
-  const handleRotate = async (direction) => {
-    if (!processedImage) return;
-    
-    const oldStatus = status;
-    setStatus('processing');
+  const dispatchToWorker = (imageSrc, pageIndex) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, img.width, img.height);
+      workerRef.current.postMessage({
+        imageData: imageData.data,
+        width: img.width,
+        height: img.height,
+        modelBuffer: modelBuffer,
+        pageIndex: pageIndex
+      });
+    };
+    img.src = imageSrc;
+  };
 
-    // Use timeout to allow UI to show processing state
-    setTimeout(() => {
-      const img = new Image();
-      img.onload = () => {
-        const cv = window.cv;
-        let src = cv.imread(img);
-        let dst = new cv.Mat();
-        
-        // Note: OpenCV rotate codes
-        // ROTATE_90_CLOCKWISE = 0
-        // ROTATE_180 = 1
-        // ROTATE_90_COUNTERCLOCKWISE = 2
-        let rotateCode = direction === 'left' ? cv.ROTATE_90_COUNTERCLOCKWISE : cv.ROTATE_90_CLOCKWISE;
-        
-        cv.rotate(src, dst, rotateCode);
-        
-        cv.imshow(processedCanvasRef.current, dst);
-        setProcessedImage(processedCanvasRef.current.toDataURL('image/png'));
-        
-        src.delete();
-        dst.delete();
-        setStatus(oldStatus);
-      };
-      img.src = processedImage;
-    }, 50);
+  const applyCrop = (detection, index) => {
+    const { boundingBox, pageSrc } = detection;
+    const [x, y, w, h] = boundingBox;
+    setOriginalImage(pageSrc);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = processedCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      canvas.width = CONFIG.TARGET_WIDTH;
+      canvas.height = CONFIG.TARGET_HEIGHT;
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      const isLandscape = w > h;
+      if (isLandscape) {
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((90 * Math.PI) / 180);
+        ctx.drawImage(img, x, y, w, h, -canvas.height / 2, -canvas.width / 2, canvas.height, canvas.width);
+      } else {
+        ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
+      }
+      ctx.restore();
+      setProcessedImage(canvas.toDataURL('image/png'));
+      setStatus('success');
+    };
+    img.src = pageSrc;
+  };
+
+  const handleRotate = (angle = 90) => {
+    if (!processedImage) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = processedCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const oldWidth = canvas.width;
+      const oldHeight = canvas.height;
+      
+      if (angle % 180 !== 0) {
+        canvas.width = oldHeight;
+        canvas.height = oldWidth;
+      }
+      
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((angle * Math.PI) / 180);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      ctx.restore();
+      setProcessedImage(canvas.toDataURL('image/png'));
+    };
+    img.src = processedImage;
+  };
+
+  const tryNextGuess = () => {
+    const nextIndex = (detectionIndex + 1) % allDetections.length;
+    setDetectionIndex(nextIndex);
+    applyCrop(allDetections[nextIndex], nextIndex);
   };
 
   const handlePrint = () => {
-    if (!processedImage) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      // Fallback for popups blocked
-      const confirmPrint = window.confirm("Pop-up blocked. Open print view in current tab?");
-      if(confirmPrint) {
-         // This replaces current window content which is destructive but a fallback
-         document.write(`<img src="${processedImage}" onload="window.print();" style="width:100%"/>`);
-      }
-      return;
-    }
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Print Label</title>
-          <style>
-            @media print {
-              @page { size: 4in 6in; margin: 0; }
-              body { margin: 0; padding: 0; }
-              img { width: 100%; height: 100%; object-fit: contain; display: block; }
-            }
-            body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0; }
-            img { max-width: 100%; height: auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-          </style>
-        </head>
-        <body>
-          <img src="${processedImage}" onload="setTimeout(() => { window.print(); window.close(); }, 500);" />
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    const pw = window.open('', '_blank');
+    if (!pw) return alert("Allow popups to print.");
+    pw.document.write(`<html><head><title>Print Label</title><style>@media print{@page{size:4in 6in;margin:0}body{margin:0;padding:0}img{width:100%;height:100%;object-fit:contain;display:block}}body{margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0}img{max-width:100%;height:auto}</style></head><body><img src="${processedImage}" onload="setTimeout(()=> {window.print();window.close();},500)" /></body></html>`);
+    pw.document.close();
   };
 
-  // --- 4. The Core Logic (Ported from Python) ---
-  const processImage = async (imageSrc) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = "Anonymous"; 
-      img.onload = () => {
-        try {
-          addLog("Starting Computer Vision analysis...");
-          const cv = window.cv;
-          
-          // --- ROBUSTNESS FIX: Use matFromImageData ---
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = img.width;
-          tempCanvas.height = img.height;
-          const ctx = tempCanvas.getContext('2d');
-          
-          // Force white background again (double safety)
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-          ctx.drawImage(img, 0, 0);
-
-          // Get raw pixel data
-          const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-          let src = cv.matFromImageData(imageData);
-          
-          let dst = new cv.Mat();
-          let gray = new cv.Mat();
-          let blur = new cv.Mat();
-          let thresh = new cv.Mat();
-          let ksize = new cv.Size(5, 5);
-
-          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-          cv.GaussianBlur(gray, blur, ksize, 0, 0, cv.BORDER_DEFAULT);
-          cv.threshold(blur, thresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
-
-          // 1. Use a small kernel just to connect text characters into words/lines
-          let dynamicKSize = Math.max(5, Math.floor(Math.min(src.cols, src.rows) * 0.005));
-          let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(dynamicKSize, dynamicKSize));
-          
-          cv.dilate(thresh, dst, kernel);
-
-          let contours = new cv.MatVector();
-          let hierarchy = new cv.Mat();
-          
-          // 2. Find external contours (bounding boxes of text blocks, barcodes)
-          cv.findContours(dst, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-          const totalArea = src.cols * src.rows;
-          let rects = [];
-
-          // 3. Filter out tiny noise
-          for (let i = 0; i < contours.size(); ++i) {
-            let c = contours.get(i);
-            let rect = cv.boundingRect(c);
-            let area = rect.width * rect.height;
-            
-            // Keep elements larger than 0.1% of the page
-            if (area > totalArea * 0.001) {
-              rects.push(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
-            }
-          }
-
-          addLog(`Found ${rects.length} significant elements. Grouping...`);
-
-          // 4. Proximity Grouping Algorithm
-          // FedEx labels have massive horizontal gaps between text and barcodes.
-          // Instead of smearing pixels, we logically group bounding boxes that are near each other.
-          let merged = true;
-          while (merged) {
-            merged = false;
-            for (let i = 0; i < rects.length; i++) {
-              for (let j = i + 1; j < rects.length; j++) {
-                let r1 = rects[i];
-                let r2 = rects[j];
-                
-                // Tolerances: 25% of width horizontally, 5% of height vertically
-                let inflateX = src.cols * 0.25; 
-                let inflateY = src.rows * 0.05; 
-                
-                // If inflated r1 intersects with r2, they belong to the same label
-                if (
-                  r1.x - inflateX < r2.x + r2.width &&
-                  r1.x + r1.width + inflateX > r2.x &&
-                  r1.y - inflateY < r2.y + r2.height &&
-                  r1.y + r1.height + inflateY > r2.y
-                ) {
-                  // Merge r2 into r1
-                  let minX = Math.min(r1.x, r2.x);
-                  let minY = Math.min(r1.y, r2.y);
-                  let maxX = Math.max(r1.x + r1.width, r2.x + r2.width);
-                  let maxY = Math.max(r1.y + r1.height, r2.y + r2.height);
-                  
-                  rects[i] = new cv.Rect(minX, minY, maxX - minX, maxY - minY);
-                  
-                  // Remove r2 and restart the loop
-                  rects.splice(j, 1);
-                  merged = true;
-                  break; 
-                }
-              }
-              if (merged) break;
-            }
-          }
-
-          addLog(`Grouped into ${rects.length} candidate regions.`);
-
-          // 5. Score candidates based on Size and Aspect Ratio
-          let bestRect = null;
-          let bestScore = -1;
-
-          for (let rect of rects) {
-            let area = rect.width * rect.height;
-            let ratio = rect.width / rect.height;
-            let normalizedRatio = ratio > 1 ? ratio : 1 / ratio; // Make ratio always >= 1
-
-            // A valid label should be a significant portion of the page (10% to 95%)
-            if (area > totalArea * 0.10 && area < totalArea * 0.95) {
-               // Perfect 4x6 label has a 1.5 ratio. Penalize deviations.
-               let ratioDiff = Math.abs(normalizedRatio - 1.5);
-               let score = area / (1 + ratioDiff); 
-               
-               if (score > bestScore) {
-                 bestScore = score;
-                 bestRect = rect;
-               }
-            }
-          }
-
-          // --- FALLBACK LOGIC ---
-          if (!bestRect) {
-            addLog("No specific label contour found. Checking for fallback...");
-            const pageRatio = src.cols / src.rows;
-            
-            // Check if page itself is roughly label-shaped (0.4 to 2.5 ratio)
-            if (pageRatio > 0.4 && pageRatio < 2.5) {
-               addLog("Fallback triggered: Using full image as label.");
-               bestRect = new cv.Rect(0, 0, src.cols, src.rows);
-            } else {
-               // Cleanup and fail
-               src.delete(); dst.delete(); gray.delete(); blur.delete(); 
-               thresh.delete(); kernel.delete(); contours.delete(); hierarchy.delete();
-               throw new Error("No shipping label detected.");
-            }
-          }
-
-          addLog(`Target locked. Cropping area: ${Math.round(bestRect.width)}x${Math.round(bestRect.height)}`);
-
-          // 6. Add a tiny 0.5% padding & Crop
-          let padX = Math.floor(src.cols * 0.005);
-          let padY = Math.floor(src.rows * 0.005);
-          let finalX = Math.max(0, bestRect.x - padX);
-          let finalY = Math.max(0, bestRect.y - padY);
-          let finalWidth = Math.min(src.cols - finalX, bestRect.width + 2 * padX);
-          let finalHeight = Math.min(src.rows - finalY, bestRect.height + 2 * padY);
-          
-          let paddedRect = new cv.Rect(finalX, finalY, finalWidth, finalHeight);
-          let roi = src.roi(paddedRect);
-          
-          if (roi.cols > roi.rows) {
-            addLog("Detected Landscape orientation. Rotating 90 degrees...");
-            let rotated = new cv.Mat();
-            cv.rotate(roi, rotated, cv.ROTATE_90_CLOCKWISE);
-            roi.delete();
-            roi = rotated;
-          }
-
-          // --- FIX: DETECT UPSIDE-DOWN LABELS ---
-          // Tracking barcodes are the largest "ink" blocks and are placed in the lower half of labels.
-          // We find the largest contour and check its Y-center to determine orientation.
-          try {
-            let grayRoi = new cv.Mat();
-            cv.cvtColor(roi, grayRoi, cv.COLOR_RGBA2GRAY, 0);
-            let threshRoi = new cv.Mat();
-            cv.threshold(grayRoi, threshRoi, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
-
-            // Use a horizontally-biased kernel. 
-            // This easily fuses the tall vertical lines of a 1D barcode into one massive solid rectangle,
-            // while preventing separate lines of text (like addresses) from merging into a huge vertical blob.
-            let ksizeRoiX = Math.max(5, Math.floor(roi.cols * 0.05));
-            let ksizeRoiY = Math.max(3, Math.floor(roi.rows * 0.005));
-            let kernelRoi = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(ksizeRoiX, ksizeRoiY));
-            let dilatedRoi = new cv.Mat();
-            cv.dilate(threshRoi, dilatedRoi, kernelRoi);
-
-            let contoursRoi = new cv.MatVector();
-            let hierarchyRoi = new cv.Mat();
-            cv.findContours(dilatedRoi, contoursRoi, hierarchyRoi, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-            let maxArea = 0;
-            let barcodeCenterY = 0;
-
-            for (let i = 0; i < contoursRoi.size(); ++i) {
-                let c = contoursRoi.get(i);
-                let rect = cv.boundingRect(c);
-                let area = rect.width * rect.height;
-                let ratio = rect.width / rect.height;
-                
-                // The main tracking barcode is wide (ratio > 1.2).
-                // This filters out square blobs (like the FedEx 'G' box or merged return addresses)
-                if (ratio > 1.2 && area > maxArea) {
-                    maxArea = area;
-                    barcodeCenterY = rect.y + (rect.height / 2);
-                }
-            }
-
-            // If the center of the largest wide block (the barcode) is clearly in the top half, it's upside down!
-            if (maxArea > 0 && barcodeCenterY < roi.rows * 0.45) {
-                 addLog("Detected upside-down label. Auto-rotating 180 degrees...");
-                 let rotated180 = new cv.Mat();
-                 cv.rotate(roi, rotated180, cv.ROTATE_180);
-                 roi.delete();
-                 roi = rotated180;
-            }
-
-            // Cleanup memory
-            grayRoi.delete(); threshRoi.delete(); kernelRoi.delete(); dilatedRoi.delete();
-            contoursRoi.delete(); hierarchyRoi.delete();
-          } catch(e) {
-            console.warn("Upside down detection skipped: ", e);
-          }
-          // --------------------------------------
-
-          let final = new cv.Mat();
-          let finalSize = new cv.Size(CONFIG.TARGET_WIDTH, CONFIG.TARGET_HEIGHT);
-          
-          cv.resize(roi, final, finalSize, 0, 0, cv.INTER_LANCZOS4);
-
-          cv.imshow(processedCanvasRef.current, final);
-          setProcessedImage(processedCanvasRef.current.toDataURL('image/png'));
-          
-          // Cleanup
-          src.delete(); dst.delete(); gray.delete(); blur.delete(); 
-          thresh.delete(); kernel.delete(); contours.delete(); 
-          hierarchy.delete(); roi.delete(); final.delete();
-
-          setStatus('success');
-          addLog("Processing Complete!");
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-      };
-      img.src = imageSrc;
-    });
-  };
-
-  // --- UI Components ---
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-700 flex flex-col">
-      
-      {/* Top Navigation Bar - FIXED: z-50 to stay on top */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 flex-none">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg text-white shadow-sm">
-              <Scissors className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-slate-900 leading-none">Crop This Label</h1>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">Automated Label Extractor</p>
-            </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 flex-none h-16 flex items-center justify-between px-4 sm:px-8 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-600 p-2 rounded-lg text-white shadow-sm flex items-center gap-1">
+            <Scissors className="w-5 h-5" />
           </div>
-          
-          {/* Status Badge & Coffee Link */}
-          <div className="flex items-center gap-2">
-            {status === 'loading' ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Initializing Engine
-              </span>
-            ) : (
-              <a 
-                href="https://buymeacoffee.com/cropthislabel" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors"
-              >
-                <Coffee className="w-4 h-4 text-amber-700" />
-                <span className="hidden md:inline">If you found this useful, please consider buying me a coffee.</span>
-                <span className="md:hidden">Buy me a coffee</span>
-              </a>
-            )}
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-slate-900 leading-none">Crop This Label</h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">AI Label Extractor</p>
           </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <a href={COFFEE_URL} target="_blank" rel="noopener noreferrer" className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold border border-amber-100 hover:bg-amber-100 transition-colors">
+            <Coffee className="w-4 h-4" /> If you found this useful, please consider buying me a coffee.
+          </a>
         </div>
       </nav>
 
-      {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 flex-grow w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* LEFT COLUMN: Input Section */}
-          <div className="lg:col-span-5 space-y-6">
-            
-            {/* Header Text */}
-            <div className="mb-2">
-              <h2 className="text-2xl font-semibold text-slate-900">Upload Document</h2>
-              <p className="text-slate-500 mt-2">
-                Upload a PDF or image containing a shipping label. We'll automatically detect, crop, and fix the orientation.
-              </p>
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-grow w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-5 space-y-6">
+          <div>
+            <h2 className="text-2xl font-semibold text-slate-900">Upload Document</h2>
+            <p className="text-slate-500 mt-2">Upload a PDF or image containing a shipping label. Our in-browser AI model will instantly detect and crop the shipping label from your PDF or image.</p>
+          </div>
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex flex-row items-center gap-3 shadow-sm">
+            <div className="bg-emerald-100 p-2 rounded-full flex-shrink-0">
+              <ShieldCheck className="w-5 h-5 text-emerald-700" />
             </div>
-
-            {/* Prominent Privacy Notice */}
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex flex-row items-center gap-3 shadow-sm">
-              <div className="bg-emerald-100 p-2 rounded-full flex-shrink-0">
-                <ShieldCheck className="w-5 h-5 text-emerald-700" />
-              </div>
-              <p className="text-sm font-medium text-emerald-800">
-                Label is processed locally. No data is stored on our servers (because we don't have any).
-              </p>
-            </div>
-
-            {/* Upload Card */}
-            <div className={`
-              relative group rounded-2xl border-2 border-dashed transition-all duration-300 ease-in-out overflow-hidden bg-white shadow-sm
-              ${status === 'processing' || status === 'loading' ? 'border-slate-200 bg-slate-50 cursor-not-allowed' : 'border-slate-300 hover:border-indigo-400 hover:shadow-md cursor-pointer'}
-              ${file ? 'h-auto' : 'h-80'}
-            `}>
-              <label className="block w-full h-full relative z-10">
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleFileUpload} 
-                  disabled={status === 'processing' || status === 'loading'}
-                />
-                
-                {/* State: Empty / Waiting for Upload */}
-                {!originalImage && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
-                    <div className={`
-                      w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-transform duration-300 group-hover:scale-110
-                      ${status === 'loading' ? 'bg-slate-100' : 'bg-indigo-50 text-indigo-600'}
-                    `}>
-                      {status === 'loading' ? (
-                        <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
-                      ) : (
-                        <Upload className="w-8 h-8" />
-                      )}
-                    </div>
-                    
-                    <h3 className="text-lg font-semibold text-slate-900 mb-1">
-                      {status === 'loading' ? 'Warming up...' : 'Click to upload or drag and drop'}
-                    </h3>
-                    <p className="text-sm text-slate-500 max-w-xs mx-auto">
-                      Supports PDF, PNG, or JPG. We handle the rest.
-                    </p>
-                  </div>
-                )}
-
-                {/* State: File Loaded (Preview) */}
-                {originalImage && (
-                  <div className="relative p-4">
-                    <div className="bg-slate-100 rounded-xl overflow-hidden border border-slate-200 aspect-[3/4] relative">
-                      <img 
-                        src={originalImage} 
-                        alt="Original" 
-                        className={`w-full h-full object-contain mix-blend-multiply ${status === 'processing' ? 'blur-sm scale-105 opacity-50' : ''} transition-all duration-500`} 
-                      />
-                      
-                      {/* Processing Overlay */}
-                      {status === 'processing' && (
-                         <div className="absolute inset-0 flex flex-col items-center justify-center z-20 backdrop-blur-sm bg-white/30">
-                           <div className="bg-white/90 p-4 rounded-2xl shadow-lg border border-white/50 backdrop-blur flex flex-col items-center">
-                             <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-2" />
-                             <span className="text-sm font-semibold text-slate-700">Analyzing...</span>
-                           </div>
-                         </div>
-                      )}
-                    </div>
-                    
-                    {/* Floating Change Button */}
-                    <div className="absolute bottom-8 left-0 right-0 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <span className="bg-slate-900/80 text-white backdrop-blur-md px-4 py-2 rounded-full text-sm font-medium shadow-lg hover:bg-slate-800">
-                        Change File
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </label>
-            </div>
-            
-            {/* Supported Formats Footnote */}
-            {!file && (
-              <div className="flex gap-4 justify-center text-xs text-slate-400 font-medium uppercase tracking-wider">
-                <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> PDF</span>
-                <span className="flex items-center gap-1"><ImageIcon className="w-3 h-3" /> JPG</span>
-                <span className="flex items-center gap-1"><ImageIcon className="w-3 h-3" /> PNG</span>
-              </div>
-            )}
+            <p className="text-sm font-medium text-emerald-800">
+              Label is processed locally. No data is stored on our servers (because we don't have any).
+            </p>
           </div>
 
-          {/* RIGHT COLUMN: Output Section */}
-          <div className="lg:col-span-7 space-y-6">
-            
-             {/* Header Text */}
-             <div className="mb-2 flex items-baseline justify-between">
-              <div>
+          <div className={`relative group rounded-2xl border-2 border-dashed transition-all overflow-hidden bg-white shadow-sm ${status === 'processing' || status === 'loading' ? 'border-slate-200 bg-slate-50 cursor-not-allowed opacity-75' : 'border-slate-300 hover:border-indigo-400 cursor-pointer'} ${originalImage ? 'h-auto' : 'h-80'}`}>
+            <label className="block w-full h-full relative z-10">
+              <input type="file" className="hidden" accept=".pdf,image/png,image/jpeg,image/webp" onChange={handleFileUpload} disabled={status === 'processing' || status === 'loading'} />
+              {!originalImage && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110 ${status === 'loading' ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                    {status === 'loading' ? <Loader2 className="w-8 h-8 text-slate-400 animate-spin" /> : <Upload className="w-8 h-8" />}
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-1">
+                    {status === 'loading' ? 'Warming up...' : 'Click to upload shipping label'}
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-2">Supports multi-page PDFs, PNG, JPEG, or WEBP</p>
+                </div>
+              )}
+              {originalImage && (
+                <div className="relative p-4">
+                  <div className="bg-slate-100 rounded-xl overflow-hidden border border-slate-200 aspect-[3/4] relative">
+                    <img src={originalImage} alt="Original" className={`w-full h-full object-contain mix-blend-multiply ${status === 'processing' ? 'blur-sm opacity-50' : ''}`} />
+                    {status === 'processing' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center z-20 backdrop-blur-sm bg-white/30">
+                        <div className="bg-white/90 p-6 rounded-2xl shadow-xl border border-white/50 flex flex-col items-center">
+                          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+                          <span className="text-sm font-semibold text-slate-700">
+                            {scanningProgress.total > 1 
+                              ? `Scanning page ${scanningProgress.current + 1}/${scanningProgress.total}...`
+                              : 'AI Scanning...'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </label>
+          </div>
+        </div>
+
+        <div className="lg:col-span-7 space-y-6">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
                 <h2 className="text-2xl font-semibold text-slate-900">Label Output</h2>
-                <p className="text-slate-500 mt-2">
-                  Optimized 4x6 thermal format label.
-                </p>
-              </div>
-              
-              {/* Status Indicator */}
-              {status === 'success' && (
-                <span className="hidden sm:flex items-center gap-1.5 text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-                  <CheckCircle2 className="w-4 h-4" /> Ready to Print
-                </span>
+                <p className="text-slate-500 mt-2">Optimized 4x6 thermal format label.</p>
+            </div>
+            <div className="flex gap-2">
+              {allDetections.length > 1 && status === 'success' && (
+                <button onClick={tryNextGuess} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-full text-xs font-bold hover:bg-indigo-700 shadow-lg animate-pulse transition-all">
+                  <Sparkles className="w-3.5 h-3.5" /> Match #{detectionIndex + 1} (Wrong? Click me)
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className={`relative min-h-[500px] rounded-2xl border flex flex-col shadow-sm overflow-hidden bg-white border-slate-200`}>
+            <canvas ref={processedCanvasRef} className="hidden" />
+            <div className="flex-grow flex items-center justify-center p-8 relative">
+              {processedImage ? (
+                <img src={processedImage} alt="Processed Label" className="max-w-full max-h-[500px] shadow-2xl border border-slate-200 bg-white" />
+              ) : (
+                <div className="text-center space-y-4 max-w-sm mx-auto opacity-50 px-4">
+                  <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto border border-slate-100">
+                    <Scissors className="w-8 h-8 text-slate-300" />
+                  </div>
+                  <div className="space-y-1">
+                     <p className="text-slate-600 font-bold text-lg">No label processed yet.</p>
+                     <p className="text-slate-500 mt-2">Upload a file on the left to see the magic happen.</p>
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Output Canvas Area */}
-            <div className={`
-              relative min-h-[500px] rounded-2xl border transition-all duration-500 flex flex-col shadow-sm overflow-hidden
-              ${status === 'success' ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-200'}
-            `}>
-              
-              {/* Hidden Canvas for Processing */}
-              <canvas ref={processedCanvasRef} className="hidden" />
-
-              <div className="flex-grow flex items-center justify-center p-8 relative">
-                {processedImage ? (
-                  <div className="relative group perspective-1000">
-                     <img 
-                      src={processedImage} 
-                      alt="Processed Label" 
-                      className="max-w-full max-h-[500px] shadow-2xl rounded-sm border border-slate-200 bg-white" 
-                      style={{ transform: 'rotateX(2deg)' }}
-                    />
-                  </div>
-                ) : (
-                  <div className="text-center space-y-4 max-w-sm mx-auto opacity-50">
-                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto border border-slate-100">
-                      <Scissors className="w-8 h-8 text-slate-300" />
-                    </div>
-                    <div>
-                       <p className="text-slate-400 font-medium">No label processed yet.</p>
-                       <p className="text-slate-400 text-sm mt-1">Upload a file on the left to see the magic happen.</p>
-                    </div>
-                  </div>
-                )}
+            <div className="bg-white border-t border-slate-200 p-4 sm:p-6 flex flex-col gap-4">
+              {/* Adjustments row */}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button 
+                  onClick={reset} 
+                  disabled={!processedImage} 
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 transition-colors shadow-sm font-medium"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span className="text-sm">Reset</span>
+                </button>
                 
-                {status === 'error' && (
-                   <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-20">
-                     <div className="text-center p-6 bg-red-50 rounded-2xl border border-red-100 max-w-sm">
-                       <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                         <AlertCircle className="w-6 h-6" />
-                       </div>
-                       <h3 className="text-red-900 font-semibold">Detection Failed</h3>
-                       <p className="text-red-700 text-sm mt-1">
-                         Could not find a valid shipping label. Please ensure the label is clear and not too blurry.
-                       </p>
-                       <button onClick={reset} className="mt-4 text-sm font-medium text-red-700 hover:text-red-800 hover:underline">
-                         Try another file
-                       </button>
-                     </div>
-                   </div>
+                {processedImage && (
+                  <>
+                    <div className="hidden sm:block w-px h-8 bg-slate-200 mx-1"></div>
+                    <button 
+                      onClick={() => handleRotate(90)} 
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium transition-all shadow-sm"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                      <span className="text-sm">Rotate 90°</span>
+                    </button>
+                    <button 
+                      onClick={() => handleRotate(180)} 
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium transition-all shadow-sm"
+                    >
+                      <FlipVertical className="w-4 h-4" />
+                      <span className="text-sm whitespace-nowrap">Flip 180°</span>
+                    </button>
+                  </>
                 )}
               </div>
 
-              {/* Action Toolbar (Bottom) */}
-              <div className="bg-white border-t border-slate-200 p-4 sm:p-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
-                
-                {/* Rotate Group */}
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                   <button 
-                     onClick={() => handleRotate('left')}
-                     disabled={!processedImage}
-                     className="flex-1 sm:flex-none p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                     title="Rotate Left"
-                   >
-                     <RotateCcw className="w-5 h-5 mx-auto" />
-                   </button>
-                   <button 
-                     onClick={() => handleRotate('right')}
-                     disabled={!processedImage}
-                     className="flex-1 sm:flex-none p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                     title="Rotate Right"
-                   >
-                     <RotateCw className="w-5 h-5 mx-auto" />
-                   </button>
-                   <div className="w-px h-8 bg-slate-200 mx-2 hidden sm:block"></div>
-                   <button 
-                     onClick={reset}
-                     disabled={!processedImage}
-                     className="flex-1 sm:flex-none p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                     title="Reset"
-                   >
-                     <RefreshCw className="w-5 h-5 mx-auto" />
-                   </button>
-                </div>
-
-                {/* Primary Actions Group */}
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <button 
-                    onClick={handlePrint}
-                    disabled={status !== 'success'}
-                    className={`
-                      flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-medium border transition-all duration-200 shadow-sm
-                      ${status === 'success' 
-                        ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400' 
-                        : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'}
-                    `}
-                  >
-                    <Printer className="w-4 h-4" /> 
-                    <span>Print</span>
-                  </button>
-
-                  <a 
-                    href={processedImage} 
-                    download={`label_${Date.now()}.png`}
-                    className={`
-                      flex-[2] sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-medium shadow-sm transition-all duration-200
-                      ${status === 'success' 
-                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-indigo-200 shadow-indigo-100 hover:-translate-y-0.5' 
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
-                    `}
-                    onClick={(e) => status !== 'success' && e.preventDefault()}
-                  >
-                    <span>Download</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </a>
-                </div>
-
+              {/* Primary Actions row */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                <button 
+                  onClick={handlePrint} 
+                  disabled={status !== 'success'} 
+                  className={`w-full sm:flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold border transition-all shadow-sm ${status === 'success' ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'}`}
+                >
+                  <Printer className="w-5 h-5" />
+                  <span>Print</span>
+                </button>
+                <a 
+                  href={processedImage} 
+                  download={`label_${Date.now()}.png`} 
+                  className={`w-full sm:flex-[1.5] flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold shadow-xl transition-all ${status === 'success' ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100 hover:-translate-y-0.5' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`} 
+                  onClick={(e) => status !== 'success' && e.preventDefault()}
+                >
+                  <span>Download Label</span>
+                  <ArrowRight className="w-5 h-5" />
+                </a>
               </div>
             </div>
-
           </div>
         </div>
       </main>
 
+      <footer className="md:hidden p-6 border-t border-slate-200 bg-white">
+        <a href={COFFEE_URL} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-4 bg-amber-50 text-amber-700 rounded-2xl font-bold border border-amber-100">
+          <Coffee className="w-5 h-5" /> Support this project
+        </a>
+      </footer>
     </div>
   );
 };
