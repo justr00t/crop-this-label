@@ -154,7 +154,7 @@ function App() {
   const resultsAccumulator = useRef([]);
   const pagesFinished = useRef(0);
 
-  const MODEL_URL = '/label-model-v2.onnx'; 
+  const MODEL_URL = '/label-model.onnx'; 
   const COFFEE_URL = 'https://buymeacoffee.com/cropthislabel';
 
   const CONFIG = {
@@ -175,7 +175,7 @@ function App() {
           setModelBuffer(buffer);
         }
       } catch (err) {
-        console.warn("AI Model fetch failed. Ensure label-model-v2.onnx is in your public folder.");
+        console.warn("AI Model fetch failed. Ensure label-model.onnx is in your public folder.");
       }
 
       if (!getPdfLib()) {
