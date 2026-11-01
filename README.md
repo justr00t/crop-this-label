@@ -1,72 +1,54 @@
 # Crop This Label
 
-A modern, fast web application for cropping and processing label images. Built with React, Vite,
-and Tailwind CSS.
+**4×6 Thermal Shipping Label Extractor · 100% Client-Side YOLOv8 ONNX + `pdf.js` Workbench**
 
-## 🚀 Features
+Crop This Label extracts shipping labels from standard `8.5" × 11"` carrier PDFs and screenshots (USPS, UPS, FedEx, DHL, Pirate Ship, Poshmark, eBay, Mercari, Depop) and normalizes them into a calibrated `4.00" × 6.00"` (`1200 × 1800 px` at `300 DPI`) thermal label ready for Rollo, Zebra, Brother, Munbyn, or Dymo 4XL printers.
 
+All PDF rasterization and YOLOv8 object detection run locally in your browser via WebAssembly — zero files or customer addresses ever leave your device.
 
-**Fast Image Processing:** Optimized for quick loading and manipulation.
-**Intuitive Cropping Interface:** Easy-to-use tools to select and crop specific areas of an
-image.
-**Responsive Design:** Works seamlessly on desktop and mobile devices.
-**Modern Stack:** Leverages Vite for lightning-fast HMR (Hot Module Replacement) and
-Tailwind for styling.
+---
 
-## 🛠 Tech Stack
+## Key Capabilities
 
+- **3-Way Carrier Intake (`Zone A`)**:
+  - Drag-and-drop or browse multi-page `.pdf`, `.png`, `.jpg`, or `.webp` carrier sheets.
+  - Press `Ctrl+V` / `Cmd+V` anywhere in the window to paste a shipping label screenshot directly from your clipboard.
+  - Click **Load Sample Carrier Sheet** to test the multi-candidate 4×6 stage immediately without uploading a file.
+- **Highlighted Source Sheet & Multi-Candidate Selector**:
+  - Displays a thumbnail of the `8.5" × 11"` source carrier sheet with an SVG bounding-box overlay showing the active detection region.
+  - Switch between up to 3 detected label regions per document sorted by YOLOv8 confidence score.
+- **Calibrated `4.00" × 6.00"` Thermal Output Stage (`Zone B`)**:
+  - Automatically rotates landscape labels into portrait `1200 × 1800 px` (`300 DPI`) thermal orientation.
+  - Tactile orientation controls (`90° CW`, `90° CCW`, `Flip 180°`, `Reset 0°`).
+  - Direct `@page { size: 4in 6in; margin: 0 }` thermal print popup and 1-click `1200 × 1800 px` PNG download.
 
-**Frontend Framework:** React
-**Build Tool:** Vite
-**Styling:** Tailwind CSS
-**Linting:** ESLint
+---
 
-## 📦 Getting Started
+## Design System & Architecture (`Kraft Press`)
 
-Follow these steps to set up the project locally on your machine.
+The interface is built on the **Kraft Press (`playful-geometric` · `monolith-center` · `bricolage-dm-sans` · `analogous` · `hard-offset-shadow`)** design system and **Mark B: The Peeled Thermal Corner (`#logo-peel`)**:
 
-**Prerequisites**
-Make sure you have Node.js installed on your computer.
+- [`DESIGN.md`](./DESIGN.md) — Visual direction, OKLCH token scales (Kraft Amber + Terracotta Stamp on warm kraft-paper neutrals, plus Dark Ink mode), typography scale (`Bricolage Grotesque`, `DM Sans`, `IBM Plex Mono`), and hard `4px` offset ink shadow specification.
+- [`JOURNEY.md`](./JOURNEY.md) — User journey, information architecture (`38fr / 62fr` monolith parcel station), and interactive state machine (`loading`, `ready`, `processing`, `success`, `error`).
+- [`mocks/workbench-directions.html`](./mocks/workbench-directions.html) & [`mocks/logo-options.html`](./mocks/logo-options.html) — Interactive Stage 3 exploration artifacts comparing all 5 candidate workbench directions and 6 custom SVG brand marks.
 
-**Installation**
+---
 
-1. Clone the repository
+## Local Development
 
-```
-git clone https://github.com/justr00t/crop-this-label.git
-cd crop-this-label
-```
-2. Install dependencies
-
-
-```
+```bash
 npm install
-```
-3. Start the development server
-
-```
 npm run dev
 ```
-4. Open your browser and navigate to [http://localhost:5173](http://localhost:5173) (or the port shown in your
-    terminal).
 
-## 📖 Usage
+Build for production:
 
-1. **Upload an Image:** Drag and drop or select an image file.
-2. **Rotate Crop:** Use the on-screen handles to rotate the label if needed.
-3. **Save/Download:** Click the action button to process and save your cropped label.
+```bash
+npm run build
+```
 
-## 🤝 Contributing
+---
 
-Contributions are welcome! If you have suggestions or bug reports, please open an issue or
-submit a pull request.
+## License
 
-1. Fork the Project
-2. Create your Feature Branch (git checkout -b feature/AmazingFeature)
-3. Commit your Changes (git commit -m 'Add some AmazingFeature')
-4. Push to the Branch (git push origin feature/AmazingFeature)
-5. Open a Pull Request
-
-## 📄 License
-
-Distributed under the MIT License. See LICENSE for more information.
+Distributed under the MIT License. See [`LICENSE`](./LICENSE) for details.
