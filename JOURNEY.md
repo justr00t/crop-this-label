@@ -34,9 +34,8 @@
 
 ```
 [Top Instrument Bar / Header]
- ├── Brand Mark + Wordmark ("Crop This Label" · "4×6 Thermal AI Extractor")
- ├── Local WASM Engine Status Badge ("100% Local · Zero Server Uploads · ONNX Ready")
- └── Support / Buy Me a Coffee Action ("Support Tool")
+ ├── Top-Left: Brand Mark + Wordmark ("Crop This Label" · "4×6 Thermal Label Extractor · 300 DPI Calibrated")
+ └── Top-Right: Theme Toggle ("Dark Ink" / "Light Ink") + Creator Tip Action ("Buy Me a Coffee")
 
 [Primary Workbench Stage — Option C: Progressive Focus (`stage-progressive`)]
  ├── STEP 1 · SOURCE DOCUMENT (`section.zone-intake`: centered 620px card in `loading`/`ready`/`error`; 38fr left card in `processing`/`success`)

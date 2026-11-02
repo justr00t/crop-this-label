@@ -151,17 +151,13 @@ function App() {
     () => document.documentElement.getAttribute('data-theme') || 'light'
   );
   const [isDragging, setIsDragging] = useState(false);
-  const [sourceFileName, setSourceFileName] = useState('Awaiting carrier file');
+  const [sourceFileName, setSourceFileName] = useState('Waiting for file');
   const [originalImage, setOriginalImage] = useState(null);
   const [processedImage, setProcessedImage] = useState(null);
   const [modelBuffer, setModelBuffer] = useState(null);
   const [allDetections, setAllDetections] = useState([]);
   const [detectionIndex, setDetectionIndex] = useState(0);
   const [rotationDeg, setRotationDeg] = useState(0);
-  const [outputDims, setOutputDims] = useState({
-    width: CONFIG.TARGET_WIDTH,
-    height: CONFIG.TARGET_HEIGHT
-  });
   const [scanningProgress, setScanningProgress] = useState({ current: 0, total: 0 });
 
   const workerRef = useRef(null);
@@ -185,7 +181,6 @@ function App() {
     setDetectionIndex(index);
     setOriginalImage(pageSrc);
     setRotationDeg(0);
-    setOutputDims({ width: CONFIG.TARGET_WIDTH, height: CONFIG.TARGET_HEIGHT });
 
     const img = new Image();
     img.onload = () => {
@@ -235,7 +230,7 @@ function App() {
   }, [applyCrop]);
 
   useEffect(() => {
-    document.title = 'Crop This Label · 4×6 Thermal Shipping Label Extractor';
+    document.title = 'Crop This Label · 4×6 Thermal Label Cropper';
 
     const initEnvironment = async () => {
       try {
@@ -310,8 +305,7 @@ function App() {
     setAllDetections([]);
     setDetectionIndex(0);
     setRotationDeg(0);
-    setOutputDims({ width: CONFIG.TARGET_WIDTH, height: CONFIG.TARGET_HEIGHT });
-    setSourceFileName('Awaiting carrier file');
+    setSourceFileName('Waiting for file');
     setStatus('ready');
     pageImagesRef.current = [];
     resultsAccumulator.current = [];
@@ -374,7 +368,7 @@ function App() {
     async (uploadedFile) => {
       if (!uploadedFile || status === 'loading' || status === 'processing') return;
       reset();
-      setSourceFileName(uploadedFile.name || 'Clipboard Carrier Image');
+      setSourceFileName(uploadedFile.name || 'Pasted Image');
       setStatus('processing');
 
       try {
@@ -461,7 +455,6 @@ function App() {
       ctx.drawImage(img, -img.width / 2, -img.height / 2);
       ctx.restore();
       setRotationDeg((prev) => (prev + angle) % 360);
-      setOutputDims({ width: canvas.width, height: canvas.height });
       setProcessedImage(canvas.toDataURL('image/png'));
     };
     img.src = processedImage;
@@ -501,14 +494,11 @@ function App() {
             <BrandLogo size={42} />
             <div className="brand-titles">
               <h1>Crop This Label</h1>
-              <p>4×6 Thermal Label Extractor · 300 DPI Calibrated</p>
+              <p>4×6 Thermal Label Cropper</p>
             </div>
           </div>
 
           <div className="masthead-actions">
-            <span className="wasm-pill">
-              ● LOCAL ONNX ENGINE · FILES NEVER LEAVE YOUR BROWSER
-            </span>
             <button
               type="button"
               className="kraft-btn"
@@ -523,9 +513,10 @@ function App() {
               target="_blank"
               rel="noopener noreferrer"
               className="kraft-btn"
+              aria-label="Buy the developer a coffee"
             >
               <Coffee size={14} />
-              <span>Support Tool</span>
+              <span>Buy Me a Coffee</span>
             </a>
           </div>
         </div>
@@ -584,8 +575,8 @@ function App() {
                   </div>
                   <h2 className="dropzone-headline">
                     {status === 'loading'
-                      ? 'Initializing local ONNX vision model...'
-                      : 'Drop carrier PDF or label image'}
+                      ? 'Preparing label cropper...'
+                      : 'Drop a shipping label PDF or screenshot'}
                   </h2>
                   <p className="dropzone-subcopy">
                     Or click to browse · Press Ctrl+V to paste from clipboard ·
@@ -601,12 +592,11 @@ function App() {
                 </div>
 
                 <p className="progressive-hint">
-                  Step 2 (4.00" × 6.00" Thermal Stage) opens automatically once you drop or paste a file.
+                  We'll automatically find and crop your 4×6 label.
                 </p>
 
                 <div className="carrier-ledger-note">
-                  SUPPORTED CARRIERS: USPS · UPS · FEDEX · DHL · PIRATESHIP ·
-                  POSHMARK · EBAY · MERCARI · DEPOP
+                  ALL MAJOR SHIPPING CARRIERS SUPPORTED
                 </div>
               </>
             )}
@@ -617,7 +607,7 @@ function App() {
                   {originalImage && (
                     <img
                       src={originalImage}
-                      alt="Scanning carrier page"
+                      alt="Scanning document page"
                       className="sheet-thumb-img"
                     />
                   )}
@@ -626,18 +616,17 @@ function App() {
                 <div className="source-summary">
                   <h2>
                     {scanningProgress.total > 1
-                      ? `Scanning page ${Math.min(
+                      ? `Finding your shipping label (page ${Math.min(
                           scanningProgress.current + 1,
                           scanningProgress.total
-                        )} of ${scanningProgress.total}...`
-                      : 'Scanning carrier page via local ONNX worker...'}
+                        )} of ${scanningProgress.total})...`
+                      : 'Finding your shipping label...'}
                   </h2>
                   <p>
-                    Rendering high-density raster and evaluating YOLOv8 4×6
-                    bounding-box anchors in WebAssembly.
+                    Scanning your document and cropping it to 4×6 format.
                   </p>
                   <span className="zone-meta">
-                    ZERO SERVER UPLOADS · CLIENT-SIDE WASM
+                    100% PRIVATE · NEVER LEAVES YOUR BROWSER
                   </span>
                 </div>
               </div>
@@ -650,7 +639,7 @@ function App() {
                     {originalImage && (
                       <img
                         src={originalImage}
-                        alt="Detected carrier sheet"
+                        alt="Detected shipping label page"
                         className="sheet-thumb-img"
                       />
                     )}
@@ -672,8 +661,7 @@ function App() {
                     )}
                     {activeCand && (
                       <span className="sheet-bbox-badge">
-                        #{detectionIndex + 1} ·{' '}
-                        {(activeCand.confidence * 100).toFixed(1)}%
+                        Label #{detectionIndex + 1}
                       </span>
                     )}
                   </div>
@@ -681,13 +669,12 @@ function App() {
                     <h2>
                       {allDetections.length}{' '}
                       {allDetections.length === 1
-                        ? 'label region'
-                        : 'label regions'}{' '}
-                      detected
+                        ? 'shipping label'
+                        : 'shipping labels'}{' '}
+                      found
                     </h2>
                     <p>
-                      Auto-cropped and oriented to 4.00" × 6.00" (1200 × 1800 px)
-                      thermal standard.
+                      Cropped, straightened, and sized for a 4×6 thermal printer.
                     </p>
                     <div className="source-actions-row">
                       <button
@@ -712,50 +699,43 @@ function App() {
                 <div
                   className="candidate-strip"
                   role="listbox"
-                  aria-label="Detected Label Candidates"
+                  aria-label="Found Labels"
                 >
                   <span className="strip-heading">
-                    Detected Candidates ({allDetections.length}) · Select
-                    Region:
+                    Found Labels ({allDetections.length}):
                   </span>
-                  {allDetections.map((cand, idx) => {
-                    const [bx, by, bw, bh] = cand.boundingBox;
-                    return (
-                      <button
-                        key={`${cand.pageNum}-${idx}`}
-                        type="button"
-                        role="option"
-                        aria-selected={idx === detectionIndex}
-                        className="cand-btn"
-                        onClick={() => applyCrop(cand, idx)}
-                      >
-                        <div>
-                          <span className="cand-meta-primary">
-                            #{idx + 1} ·{' '}
-                            {cand.labelTitle || `Shipping Label Region`} (Page{' '}
-                            {cand.pageNum || 1} of {cand.pageTotal || 1})
-                          </span>
-                          <span className="cand-meta-sub">
-                            BBOX x:{bx} y:{by} · {bw}×{bh} px
-                          </span>
-                        </div>
-                        <span className="cand-score-pill">
-                          {(cand.confidence * 100).toFixed(1)}% CONF
+                  {allDetections.map((cand, idx) => (
+                    <button
+                      key={`${cand.pageNum}-${idx}`}
+                      type="button"
+                      role="option"
+                      aria-selected={idx === detectionIndex}
+                      className="cand-btn"
+                      onClick={() => applyCrop(cand, idx)}
+                    >
+                      <div>
+                        <span className="cand-meta-primary">
+                          Label #{idx + 1} · Page {cand.pageNum || 1} of{' '}
+                          {cand.pageTotal || 1}
                         </span>
-                      </button>
-                    );
-                  })}
+                      </div>
+                      <span className="cand-score-pill">
+                        {idx === 0
+                          ? 'Best Match'
+                          : `${Math.round(cand.confidence * 100)}% Match`}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </>
             )}
 
             {status === 'error' && (
               <div className="error-callout" role="alert">
-                <h2>No shipping label region detected</h2>
+                <h2>No shipping label found</h2>
                 <p>
-                  The local vision model scanned all pages but found no bounding
-                  box above 15% confidence. Ensure the barcode and address block
-                  are visible, then upload another file.
+                  Please check that you uploaded a valid shipping label PDF or
+                  screenshot and try again.
                 </p>
                 <div className="source-actions-row">
                   <button
@@ -776,11 +756,11 @@ function App() {
         <section className="zone-stage" aria-labelledby="zoneStageTitle">
           <div className="zone-header">
             <span className="zone-title" id="zoneStageTitle">
-              STEP 2 · 4.00" × 6.00" THERMAL LABEL
+              STEP 2 · YOUR 4×6 LABEL
             </span>
             <span className="zone-meta">
-              {outputDims.width} × {outputDims.height} PX · 300 DPI ·{' '}
-              {rotationDeg}°
+              4" × 6" ·{' '}
+              {rotationDeg > 0 ? `ROTATED ${rotationDeg}°` : 'READY TO PRINT'}
             </span>
           </div>
 
@@ -788,8 +768,8 @@ function App() {
 
           <div className="stage-workspace">
             <div className="stage-dimension-bar">
-              <span>← 4.00 IN (1200 PX) →</span>
-              <span>RATIO 2:3 THERMAL</span>
+              <span>← 4 INCHES →</span>
+              <span>6 INCHES TALL</span>
             </div>
 
             <div className="stage-sheet-rig">
@@ -803,13 +783,13 @@ function App() {
                 ) : (
                   <div className="empty-stage-blueprint">
                     <BrandLogo size={52} />
-                    <h3>Awaiting source document</h3>
+                    <h3>Finding your label...</h3>
                     <p>
-                      Drop a carrier PDF or press Ctrl+V to snap your cropped
-                      4.00" × 6.00" thermal label onto this stage.
+                      Your cropped 4" × 6" shipping label will appear here
+                      automatically.
                     </p>
                     <span className="zone-meta">
-                      1200 × 1800 PX · AUTO-LANDSCAPE ROTATION
+                      4" × 6" THERMAL FORMAT
                     </span>
                   </div>
                 )}
@@ -831,7 +811,7 @@ function App() {
                 disabled={!processedImage}
               >
                 <RotateCw size={14} />
-                <span>Rotate 90° CW</span>
+                <span>Rotate 90°</span>
               </button>
               <button
                 type="button"
@@ -849,7 +829,7 @@ function App() {
                 disabled={!processedImage}
               >
                 <RotateCcw size={14} />
-                <span>Reset 0°</span>
+                <span>Reset</span>
               </button>
             </div>
 
@@ -886,10 +866,10 @@ function App() {
       <footer className="app-footer">
         <div className="footer-inner">
           <span>
-            CROP THIS LABEL · 100% CLIENT-SIDE YOLOv8 ONNX + PDF.JS WORKBENCH
+            CROP THIS LABEL · 100% PRIVATE · RUNS ENTIRELY IN YOUR BROWSER
           </span>
           <span>
-            4.00" × 6.00" THERMAL STANDARD · ZERO CLOUD UPLOADS
+            STANDARD 4×6 THERMAL LABELS · FILES NEVER LEAVE YOUR DEVICE
           </span>
         </div>
       </footer>

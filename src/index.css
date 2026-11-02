@@ -205,11 +205,9 @@ header.app-masthead {
 }
 
 .masthead-inner {
-  max-width: 1120px;
-  margin: 0 auto;
+  width: 100%;
   padding: var(--space-3) var(--space-6);
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
@@ -470,6 +468,13 @@ a:focus-visible,
     width: calc(100% - 1.25rem);
     margin: var(--space-3) auto;
     gap: var(--space-4);
+  }
+}
+
+@media (max-width: 640px) {
+  .masthead-inner {
+    padding: var(--space-3) var(--space-4);
+    flex-wrap: wrap;
   }
 }
 /* </style> */
