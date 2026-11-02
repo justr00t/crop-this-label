@@ -38,17 +38,18 @@
  ├── Local WASM Engine Status Badge ("100% Local · Zero Server Uploads · ONNX Ready")
  └── Support / Buy Me a Coffee Action ("Support Tool")
 
-[Primary Workbench Stage — Asymmetric 2-Zone Layout or Central Station]
- ├── Zone A: Source Document & Intake Control (38% width on desktop Split-Stage)
- │    ├── File Dropzone / Click-to-Upload / Window-wide Drag & Ctrl+V Paste Target
- │    ├── Source Document Preview (shows full 8.5×11 page with detected bounding-box highlight)
- │    ├── Multi-Candidate Selector Strip (when ≥2 detections exist: Candidate #1 [96% · P1], #2 [81% · P2])
+[Primary Workbench Stage — Option C: Progressive Focus (`stage-progressive`)]
+ ├── STEP 1 · SOURCE DOCUMENT (`section.zone-intake`: centered 620px card in `loading`/`ready`/`error`; 38fr left card in `processing`/`success`)
+ │    ├── File Dropzone / Click-to-Upload / Window-wide Drag & Ctrl+V Paste Target (no sample sheet clutter)
+ │    ├── Progressive Hint (`"Step 2 (4.00\" × 6.00\" Thermal Stage) opens automatically once you drop or paste a file."`)
+ │    ├── Source Document Preview (shows full 8.5×11 page with detected bounding-box highlight in `processing`/`success`)
+ │    ├── Multi-Candidate Selector Strip (when ≥1 detections exist: Candidate #1 [98.4% · P1], #2 [86.2% · P2])
  │    └── Source Reset / Upload New File Action
  │
- └── Zone B: Calibrated 4×6 Thermal Label Output Stage (62% width on desktop Split-Stage)
-      ├── Stage Header: Output Telemetry ("4.00 × 6.00 IN · 1200 × 1800 PX · 300 DPI THERMAL")
-      ├── Calibrated 2:3 Label Inspection Frame (with signature brackets / ruler / manifest borders)
-      ├── Orientation & Transform Bar: [Rotate 90° CW] · [Flip 180°] · [Reset]
+ └── STEP 2 · 4.00" × 6.00" THERMAL LABEL (`section.zone-stage`: hidden in `loading`/`ready`/`error`; 62fr separated right card with `var(--space-6)` gap in `processing`/`success`)
+      ├── Stage Header: Output Telemetry ("STEP 2 · 4.00\" × 6.00\" THERMAL LABEL" · "1200 × 1800 PX · 300 DPI · 0°")
+      ├── Calibrated 2:3 Label Inspection Frame (`div.label-sheet-frame`)
+      ├── Orientation & Transform Bar: [Rotate 90° CW] · [Flip 180°] · [Reset 0°]
       └── Primary Completion Bar: [Print 4×6 Label] (Secondary/Co-Primary) + [Download 4×6 PNG] (Primary CTA)
 ```
 
@@ -56,15 +57,15 @@
 
 ## 3. State Matrix (Mandatory Reachable States)
 
-Every view and mock must support and clearly differentiate all 4 operational states:
+Every view and mock must support and clearly differentiate all 4 operational states under the locked **Option C — Progressive Focus (`stage-progressive`)** layout:
 
-| State ID (`data-state`) | Trigger | Zone A (Intake / Source) | Zone B (4×6 Output Stage) | Primary Action |
+| State ID (`data-state`) | Trigger | Step 1 (`section.zone-intake`) | Step 2 (`section.zone-stage`) | Primary Action |
 |---|---|---|---|---|
-| **`loading`** | Initial page load while `label-model.onnx` & `pdf.js` initialize | Dropzone disabled with `"Initializing local ONNX vision model…"` status indicator | Calibrated empty 4×6 stage wireframe | Wait (~1s) |
-| **`ready`** *(Default Empty)* | Model & `pdf.js` loaded; no file uploaded yet | Active dropzone: `"Drop PDF or image anywhere, click to browse, or press Ctrl+V"` + supported format chips (`PDF`, `PNG`, `JPG`, `WEBP`) | Calibrated empty 4×6 blueprint/stage showing physical `4.00" × 6.00"` guides and `"Awaiting source document"` | Upload / Drop / Paste file |
-| **`processing`** | File selected/dropped/pasted; `pdf.js` rendering + ONNX worker running | Source page preview visible with technical scan overlay: `"Scanning page X of Y…"` | Stage displays active calibration state | Automatic transition to `success` or `error` |
-| **`success`** | ≥1 shipping label bounding box detected & cropped to `1200×1800` | Compact source sheet preview showing where the label was found + **"Upload New"** button + **Candidate Switcher Strip** (if `allDetections.length > 1`) | High-contrast 4×6 cropped thermal label on calibrated stage + active `[Rotate 90°]`, `[Flip 180°]` tools | **Download 4×6 PNG** or **Print 4×6** |
-| **`error`** | 0 bounding boxes above `0.15` confidence threshold or unreadable file | Diagnostic callout: `"No 4×6 shipping label detected in this file"` with clear explanation (check contrast/resolution or try another page) | Stage shows diagnostic empty state | **Try Another File / Reset** |
+| **`loading`** | Initial page load while `label-model.onnx` & `pdf.js` initialize | Centered `620px` single card; dropzone disabled with `"Initializing local ONNX vision model..."` + progressive hint | Hidden (`display: none`) to eliminate empty-stage clutter | Wait (~1s) |
+| **`ready`** *(Default Empty)* | Model & `pdf.js` loaded; no file uploaded yet | Centered `620px` single card; active dropzone (`"Drop carrier PDF or label image"`) + format tags + progressive hint (`"Step 2 (4.00\" × 6.00\" Thermal Stage) opens automatically once you drop or paste a file."`) | Hidden (`display: none`) until a file is dropped or pasted | Upload / Drop / Paste file |
+| **`processing`** | File selected/dropped/pasted; `pdf.js` rendering + ONNX worker running | Expands to `38fr` left card; source page preview visible with technical scan overlay: `"Scanning page X of Y..."` | Opens automatically as a separated `62fr` right card across `var(--space-6)` gap | Automatic transition to `success` or `error` |
+| **`success`** | ≥1 shipping label bounding box detected & cropped to `1200×1800` | `38fr` left card with source sheet preview (`1.5px solid var(--border-subtle)` internal rule), **"Upload New File"** / **"Clear"** buttons, and **Candidate Switcher Strip** | Separated `62fr` right card displaying high-contrast 4×6 cropped thermal label on calibrated stage + active `[Rotate 90° CW]`, `[Flip 180°]`, `[Reset 0°]` tools | **Download 4×6 PNG** or **Print 4×6 Label** |
+| **`error`** | 0 bounding boxes above `0.15` confidence threshold or unreadable file | Collapses back to centered `620px` single card with diagnostic callout: `"No shipping label region detected"` + **"Try Another File"** action | Hidden (`display: none`) | **Try Another File** |
 
 ---
 

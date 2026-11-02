@@ -9,8 +9,7 @@ import {
   Download,
   Coffee,
   Sun,
-  Moon,
-  FileText
+  Moon
 } from 'lucide-react';
 import { BrandLogo } from './components/BrandLogo';
 import './App.css';
@@ -155,7 +154,6 @@ function App() {
   const [sourceFileName, setSourceFileName] = useState('Awaiting carrier file');
   const [originalImage, setOriginalImage] = useState(null);
   const [processedImage, setProcessedImage] = useState(null);
-  const [pdfReady, setPdfReady] = useState(false);
   const [modelBuffer, setModelBuffer] = useState(null);
   const [allDetections, setAllDetections] = useState([]);
   const [detectionIndex, setDetectionIndex] = useState(0);
@@ -246,25 +244,8 @@ function App() {
           const buffer = await response.arrayBuffer();
           setModelBuffer(buffer);
         }
-      } catch (err) {
+      } catch {
         console.warn('AI Model fetch failed. Ensure label-model.onnx is in public/.');
-      }
-
-      if (!getPdfLib()) {
-        const pdfScript = document.createElement('script');
-        pdfScript.src =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-        pdfScript.onload = () => {
-          const lib = getPdfLib();
-          if (lib) {
-            lib.GlobalWorkerOptions.workerSrc =
-              'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-            setPdfReady(true);
-          }
-        };
-        document.body.appendChild(pdfScript);
-      } else {
-        setPdfReady(true);
       }
 
       const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
@@ -300,17 +281,28 @@ function App() {
           }
         }
       };
+
+      if (!getPdfLib()) {
+        const pdfScript = document.createElement('script');
+        pdfScript.src =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        pdfScript.onload = () => {
+          const lib = getPdfLib();
+          if (lib) {
+            lib.GlobalWorkerOptions.workerSrc =
+              'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            setStatus((prev) => (prev === 'loading' ? 'ready' : prev));
+          }
+        };
+        document.body.appendChild(pdfScript);
+      } else {
+        setStatus((prev) => (prev === 'loading' ? 'ready' : prev));
+      }
     };
 
     initEnvironment();
     return () => workerRef.current?.terminate();
   }, [finalizeDetections]);
-
-  useEffect(() => {
-    if (pdfReady && workerRef.current && status === 'loading') {
-      setStatus('ready');
-    }
-  }, [pdfReady, status]);
 
   const reset = useCallback(() => {
     setOriginalImage(null);
@@ -400,7 +392,7 @@ function App() {
           setScanningProgress({ current: 0, total: 1 });
           dispatchToWorker(imageSrc, 0);
         }
-      } catch (err) {
+      } catch {
         setStatus('error');
       }
     },
@@ -447,166 +439,6 @@ function App() {
     setIsDragging(false);
     const file = e.dataTransfer?.files?.[0];
     if (file) processFile(file);
-  };
-
-  const buildSampleSheetDataUrl = (
-    carrierTitle,
-    serviceLine,
-    recipientName,
-    recipientAddr,
-    trackingCode,
-    lx = 240,
-    ly = 340
-  ) => {
-    const sheet = document.createElement('canvas');
-    sheet.width = 1700;
-    sheet.height = 2200;
-    const ctx = sheet.getContext('2d');
-    const styles = getComputedStyle(document.documentElement);
-    const readToken = (name) => styles.getPropertyValue(['', '', name].join('-')).trim();
-    const paperColor = readToken('label-paper') || 'white';
-    const inkColor = readToken('label-ink') || 'black';
-    const stampColor = readToken('secondary-9') || inkColor;
-
-    ctx.fillStyle = paperColor;
-    ctx.fillRect(0, 0, sheet.width, sheet.height);
-
-    // Top Tear-Off Shipper Receipt Manifest ([240, 70, 1200, 210])
-    ctx.strokeStyle = inkColor;
-    ctx.lineWidth = 4;
-    ctx.strokeRect(240, 70, 1200, 210);
-    ctx.fillStyle = inkColor;
-    ctx.font = "700 30px 'IBM Plex Mono', monospace";
-    ctx.fillText('SHIPPER MANIFEST RECEIPT · DETACH BEFORE AFFIXING 4×6 LABEL', 275, 122);
-    ctx.font = "500 26px 'IBM Plex Mono', monospace";
-    ctx.fillText(`CARRIER: ${carrierTitle}   |   REF: ${trackingCode}`, 275, 174);
-    ctx.fillText(`RECIPIENT: ${recipientName} · AUSTIN TX 78701`, 275, 224);
-
-    // Dashed perforation tear line across 8.5x11 carrier sheet
-    ctx.save();
-    ctx.strokeStyle = stampColor;
-    ctx.lineWidth = 4;
-    ctx.setLineDash([18, 14]);
-    ctx.beginPath();
-    ctx.moveTo(120, 308);
-    ctx.lineTo(1580, 308);
-    ctx.stroke();
-    ctx.restore();
-
-    // Outer 4x6 label frame at [lx, ly, 1200, 1800]
-    const lw = 1200;
-    const lh = 1800;
-
-    ctx.strokeStyle = inkColor;
-    ctx.lineWidth = 10;
-    ctx.strokeRect(lx, ly, lw, lh);
-
-    // Priority service block
-    ctx.lineWidth = 8;
-    ctx.strokeRect(lx + 48, ly + 48, 220, 220);
-    ctx.fillStyle = inkColor;
-    ctx.font = "800 170px 'Bricolage Grotesque', sans-serif";
-    ctx.fillText('P', lx + 102, ly + 220);
-
-    ctx.font = "700 42px 'IBM Plex Mono', monospace";
-    ctx.fillText(carrierTitle, lx + 310, ly + 115);
-    ctx.font = "500 32px 'IBM Plex Mono', monospace";
-    ctx.fillText('1 LB 14 OZ · ZONE 4 · COMMERCIAL', lx + 310, ly + 175);
-    ctx.fillText('NO SURCHARGE · 300 DPI VERIFIED', lx + 310, ly + 230);
-
-    // Horizontal dividers
-    ctx.beginPath();
-    ctx.moveTo(lx, ly + 310);
-    ctx.lineTo(lx + lw, ly + 310);
-    ctx.moveTo(lx, ly + 440);
-    ctx.lineTo(lx + lw, ly + 440);
-    ctx.moveTo(lx, ly + 1140);
-    ctx.lineTo(lx + lw, ly + 1140);
-    ctx.stroke();
-
-    ctx.font = "800 62px 'Bricolage Grotesque', sans-serif";
-    ctx.fillText(serviceLine, lx + 180, ly + 398);
-
-    // Origin & Destination
-    ctx.font = "500 30px 'IBM Plex Mono', monospace";
-    ctx.fillText('ORIGIN: NICO SUPPLY CO · 210 CANAL ST · NEW YORK NY 10013', lx + 56, ly + 520);
-    ctx.font = "700 34px 'IBM Plex Mono', monospace";
-    ctx.fillText('SHIP TO:', lx + 56, ly + 660);
-    ctx.font = "700 52px 'Bricolage Grotesque', sans-serif";
-    ctx.fillText(recipientName, lx + 56, ly + 745);
-    ctx.font = "500 42px 'IBM Plex Mono', monospace";
-    ctx.fillText(recipientAddr, lx + 56, ly + 825);
-    ctx.fillText('AUSTIN TX 78701-3210', lx + 56, ly + 890);
-
-    // Simulated 1D Tracking Barcode
-    ctx.font = "700 34px 'IBM Plex Mono', monospace";
-    ctx.fillText('USPS TRACKING # EP', lx + 395, ly + 1220);
-    for (let bx = lx + 90; bx < lx + lw - 90; bx += 22) {
-      const barW = (bx % 44 === 0) ? 12 : 6;
-      ctx.fillRect(bx, ly + 1260, barW, 340);
-    }
-    ctx.font = "700 42px 'IBM Plex Mono', monospace";
-    ctx.fillText(trackingCode, lx + 235, ly + 1680);
-
-    return sheet.toDataURL('image/png');
-  };
-
-  const loadSampleCarrierSheet = () => {
-    reset();
-    setSourceFileName('USPS-Priority-Sample-2Page.pdf');
-    const page1Url = buildSampleSheetDataUrl(
-      'USPS PRIORITY MAIL',
-      'PRIORITY MAIL 2-DAY',
-      'MARCUS VANCE · VANCE INSTRUMENTS',
-      '742 INDUSTRIAL PKWY STE 4B',
-      '9405 5036 9930 0418 2910 44',
-      240,
-      340
-    );
-    const page2Url = buildSampleSheetDataUrl(
-      'UPS GROUND RETURN',
-      'UPS RETURN SERVICE 4X6',
-      'WAREHOUSE RETURNS DEPT #9',
-      '1900 LOGISTICS BLVD DOCK 12',
-      '1Z 999 AA1 01 2345 6784',
-      310,
-      320
-    );
-    pageImagesRef.current = [page1Url, page2Url];
-    const sampleCandidates = [
-      {
-        boundingBox: [240, 340, 1200, 1800],
-        confidence: 0.984,
-        pageNum: 1,
-        pageTotal: 2,
-        pageWidth: 1700,
-        pageHeight: 2200,
-        pageSrc: page1Url,
-        labelTitle: 'USPS Priority 4×6'
-      },
-      {
-        boundingBox: [310, 320, 1200, 1800],
-        confidence: 0.862,
-        pageNum: 2,
-        pageTotal: 2,
-        pageWidth: 1700,
-        pageHeight: 2200,
-        pageSrc: page2Url,
-        labelTitle: 'UPS Return Slip 4×6'
-      },
-      {
-        boundingBox: [240, 70, 1200, 210],
-        confidence: 0.618,
-        pageNum: 1,
-        pageTotal: 2,
-        pageWidth: 1700,
-        pageHeight: 2200,
-        pageSrc: page1Url,
-        labelTitle: 'Shipper Manifest Receipt'
-      }
-    ];
-    setAllDetections(sampleCandidates);
-    applyCrop(sampleCandidates[0], 0);
   };
 
   const handleRotate = (angle = 90) => {
@@ -699,13 +531,13 @@ function App() {
         </div>
       </header>
 
-      {/* MONOLITH CENTER PARCEL STATION (38fr / 62fr INTERNAL SPLIT) */}
+      {/* PROGRESSIVE FOCUS WORKBENCH (STEP 1 -> STEP 2 SEPARATED STATIONS) */}
       <main className="workbench-shell">
-        {/* ZONE A: SOURCE CARRIER SHEET & INTAKE CONTROL */}
+        {/* STEP 1: SOURCE DOCUMENT & INTAKE CONTROL */}
         <section className="zone-intake" aria-labelledby="zoneIntakeTitle">
           <div className="zone-header">
             <span className="zone-title" id="zoneIntakeTitle">
-              Zone A · Source Carrier Sheet
+              STEP 1 · SOURCE DOCUMENT
             </span>
             <span className="zone-meta">{sourceFileName}</span>
           </div>
@@ -768,19 +600,9 @@ function App() {
                   </div>
                 </div>
 
-                <div className="intake-sample-bar">
-                  <span className="zone-meta">
-                    No label file handy? Test the 4×6 stage right now:
-                  </span>
-                  <button
-                    type="button"
-                    className="kraft-btn"
-                    onClick={loadSampleCarrierSheet}
-                  >
-                    <FileText size={14} />
-                    <span>Load Sample Carrier Sheet</span>
-                  </button>
-                </div>
+                <p className="progressive-hint">
+                  Step 2 (4.00" × 6.00" Thermal Stage) opens automatically once you drop or paste a file.
+                </p>
 
                 <div className="carrier-ledger-note">
                   SUPPORTED CARRIERS: USPS · UPS · FEDEX · DHL · PIRATESHIP ·
@@ -944,25 +766,17 @@ function App() {
                     <Upload size={14} />
                     <span>Try Another File</span>
                   </button>
-                  <button
-                    type="button"
-                    className="kraft-btn"
-                    onClick={loadSampleCarrierSheet}
-                  >
-                    <FileText size={14} />
-                    <span>Load Sample Carrier Sheet</span>
-                  </button>
                 </div>
               </div>
             )}
           </div>
         </section>
 
-        {/* ZONE B: CALIBRATED 4x6 THERMAL OUTPUT STAGE */}
+        {/* STEP 2: CALIBRATED 4x6 THERMAL OUTPUT STAGE */}
         <section className="zone-stage" aria-labelledby="zoneStageTitle">
           <div className="zone-header">
             <span className="zone-title" id="zoneStageTitle">
-              Zone B · Calibrated 4.00" × 6.00" Output Stage
+              STEP 2 · 4.00" × 6.00" THERMAL LABEL
             </span>
             <span className="zone-meta">
               {outputDims.width} × {outputDims.height} PX · 300 DPI ·{' '}

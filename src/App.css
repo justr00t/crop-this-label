@@ -61,14 +61,12 @@
   border-top: 1px solid var(--border-subtle);
 }
 
-.intake-sample-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-subtle);
+.progressive-hint {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: center;
+  padding-top: var(--space-2);
 }
 
 /* Source Sheet Preview & Highlighted Bounding Box */
@@ -78,7 +76,7 @@
   gap: var(--space-4);
   align-items: start;
   padding-bottom: var(--space-4);
-  border-bottom: 2px solid var(--neutral-12);
+  border-bottom: 1.5px solid var(--border-subtle);
 }
 
 section.zone-intake .source-sheet-preview .sheet-thumb {
@@ -298,7 +296,7 @@ section.zone-intake .error-callout p {
 
 .stage-controls-bar {
   width: 100%;
-  border-top: 2px solid var(--neutral-12);
+  border-top: 1.5px solid var(--border-subtle);
   background-color: var(--surface);
   padding: var(--space-4) var(--space-5);
   display: flex;

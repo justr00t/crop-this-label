@@ -252,36 +252,57 @@ header.app-masthead span.wasm-pill {
   gap: 0.4rem;
 }
 
-/* Monolith Center Parcel Station (38fr / 62fr Internal Split) */
+/* Progressive Focus Workbench (Step 1 -> Step 2 Separated Stations) */
 main.workbench-shell {
-  max-width: 1080px;
+  max-width: 1100px;
   width: calc(100% - 2rem);
   margin: var(--space-6) auto;
   display: grid;
   grid-template-columns: 38fr 62fr;
-  border: 2px solid var(--neutral-12);
-  border-radius: var(--radius-ui);
-  box-shadow: var(--shadow-ui);
-  background-color: var(--surface);
-  overflow: hidden;
+  gap: var(--space-6);
+  align-items: stretch;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.workbench-page[data-state="loading"] main.workbench-shell,
+.workbench-page[data-state="ready"] main.workbench-shell,
+.workbench-page[data-state="error"] main.workbench-shell {
+  max-width: 620px;
+  grid-template-columns: 1fr;
+}
+
+.workbench-page[data-state="loading"] section.zone-stage,
+.workbench-page[data-state="ready"] section.zone-stage,
+.workbench-page[data-state="error"] section.zone-stage {
+  display: none;
 }
 
 section.zone-intake {
-  border-right: 2px solid var(--neutral-12);
+  background-color: var(--surface);
+  border: 2px solid var(--neutral-12);
+  border-radius: var(--radius-ui);
+  box-shadow: var(--shadow-ui);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  background-color: var(--surface);
 }
 
 section.zone-stage {
+  background-color: var(--background);
+  border: 2px solid var(--neutral-12);
+  border-radius: var(--radius-ui);
+  box-shadow: var(--shadow-ui);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  background-color: var(--background);
 }
 
 .zone-header {
   padding: var(--space-3) var(--space-5);
-  border-bottom: 2px solid var(--neutral-12);
+  border-bottom: 1.5px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -372,7 +393,7 @@ button.kraft-btn-primary:active {
 }
 
 /* Dropzone Intake Well */
-section.zone-intake .dropzone-well {
+section.zone-intake div.dropzone-well {
   border: 2px dashed var(--border-strong);
   border-radius: var(--radius-ui);
   background-color: var(--background);
@@ -382,8 +403,8 @@ section.zone-intake .dropzone-well {
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-section.zone-intake .dropzone-well:hover,
-section.zone-intake .dropzone-well[data-dragging="true"] {
+section.zone-intake div.dropzone-well:hover,
+section.zone-intake div.dropzone-well[data-dragging="true"] {
   background-color: var(--accent-bg-subtle);
   border-color: var(--neutral-12);
   border-style: solid;
@@ -422,7 +443,7 @@ section.zone-intake button.cand-btn[aria-selected="true"] {
 }
 
 /* Physical 4x6 Thermal Label Sheet Frame */
-.label-sheet-frame {
+div.label-sheet-frame {
   background-color: var(--label-paper);
   color: var(--label-ink);
   border: 2px solid var(--neutral-12);
@@ -448,11 +469,7 @@ a:focus-visible,
     grid-template-columns: 1fr;
     width: calc(100% - 1.25rem);
     margin: var(--space-3) auto;
-  }
-
-  section.zone-intake {
-    border-right: none;
-    border-bottom: 2px solid var(--neutral-12);
+    gap: var(--space-4);
   }
 }
 /* </style> */
