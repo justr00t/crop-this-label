@@ -1,0 +1,14 @@
+name = "crop-this-label"
+account_id = "53300457602716739de2b907f120a8c2"
+compatibility_date = "2025-01-01"
+
+routes = [
+  { pattern = "cropthislabel.com", custom_domain = true },
+  { pattern = "www.cropthislabel.com", custom_domain = true }
+]
+
+[build]
+command = "npm run build"
+
+[assets]
+directory = "./dist"
