@@ -230,7 +230,7 @@ function App() {
   }, [applyCrop]);
 
   useEffect(() => {
-    document.title = 'Crop This Label · 4×6 Thermal Label Cropper';
+    document.title = 'Crop This Label — 4×6 Thermal Label Cropper';
 
     const initEnvironment = async () => {
       try {

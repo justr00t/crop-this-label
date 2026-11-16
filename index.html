@@ -26,9 +26,65 @@
       name="description"
       content="Automatically find, crop, and rotate 4×6 thermal shipping labels from PDFs and screenshots. 100% private and runs entirely in your browser."
     />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#f4f2ef" />
+
+    <!-- Open Graph & Social Metadata -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Crop This Label" />
+    <meta property="og:url" content="https://cropthislabel.com/" />
+    <meta property="og:title" content="Crop This Label — 4×6 Thermal Label Cropper" />
+    <meta
+      property="og:description"
+      content="Automatically find, crop, and rotate 4×6 thermal shipping labels from PDFs and screenshots. 100% private and runs entirely in your browser."
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Crop This Label — 4×6 Thermal Label Cropper" />
+    <meta
+      name="twitter:description"
+      content="Automatically find, crop, and rotate 4×6 thermal shipping labels from PDFs and screenshots. 100% private and runs entirely in your browser."
+    />
+
+    <!-- Structured Data (Schema.org WebApplication) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Crop This Label",
+        "alternateName": "Crop This Label — 4×6 Thermal Label Cropper",
+        "url": "https://cropthislabel.com/",
+        "description": "Automatically find, crop, and rotate 4×6 thermal shipping labels from multi-page PDFs and screenshots. 100% private and runs entirely in your browser.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript and WebAssembly",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Automatic 4×6 shipping label detection from PDFs and screenshots",
+          "Multi-page PDF scanning and clipboard paste support",
+          "90° and 180° thermal label orientation controls",
+          "100% local in-browser processing — files never leave your device"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main>
+        <h1>Crop This Label — 4×6 Thermal Label Cropper</h1>
+        <p>
+          Automatically find, crop, and rotate 4×6 thermal shipping labels from
+          PDFs and screenshots. 100% private — all processing runs locally in
+          your browser and files never leave your device. Please enable
+          JavaScript to use the label cropper.
+        </p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
