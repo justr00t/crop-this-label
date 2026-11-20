@@ -74,6 +74,108 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      Static guide content. It sits outside #root on purpose: it ships in the
+      raw HTML, so search engines and no-JS visitors get real text without
+      waiting for React, and React never replaces it.
+    -->
+    <section class="seo-guide" aria-labelledby="guideTitle">
+      <div class="guide-inner">
+        <h2 id="guideTitle">How to crop a shipping label to 4×6</h2>
+        <ol class="guide-steps">
+          <li>
+            <h3>Drop or paste your label</h3>
+            <p>
+              Use the full-page PDF or screenshot you got from USPS, UPS, FedEx,
+              Pirate Ship, eBay, Poshmark, Mercari or Depop. Multi-page PDF, PNG,
+              JPG and WEBP files work, and Ctrl+V pastes straight from your
+              clipboard.
+            </p>
+          </li>
+          <li>
+            <h3>The label is found for you</h3>
+            <p>
+              A vision model running in your browser scans every page, finds the
+              shipping label and crops it to a 4.00 × 6.00 inch image (1200 × 1800
+              px, 300 DPI). If a PDF holds more than one label, pick the one you
+              need from the candidates it shows.
+            </p>
+          </li>
+          <li>
+            <h3>Rotate, print or download</h3>
+            <p>
+              Rotate 90° or flip 180° if the label is sideways, then print it on
+              your 4×6 thermal printer or save it as a PNG.
+            </p>
+          </li>
+        </ol>
+
+        <h2>Works with labels from</h2>
+        <ul class="guide-carriers">
+          <li>USPS</li>
+          <li>UPS</li>
+          <li>FedEx</li>
+          <li>Pirate Ship</li>
+          <li>eBay</li>
+          <li>Poshmark</li>
+          <li>Mercari</li>
+          <li>Depop</li>
+        </ul>
+
+        <h2>Questions</h2>
+        <div class="guide-faq">
+          <details>
+            <summary>Is Crop This Label free?</summary>
+            <p>Yes. There is no account to make and nothing to install.</p>
+          </details>
+          <details>
+            <summary>Are my labels uploaded anywhere?</summary>
+            <p>
+              No. Cropping runs entirely in your browser with a local model, so
+              your files and your customers' addresses never leave your device.
+            </p>
+          </details>
+          <details>
+            <summary>Which printers does it work with?</summary>
+            <p>
+              It makes a standard 4×6 inch image at 300 DPI, the size desktop
+              thermal label printers take. You can also save the PNG and print it
+              from any app.
+            </p>
+          </details>
+          <details>
+            <summary>My PDF has several pages. Will it find the label?</summary>
+            <p>
+              Yes. It scans every page and lists each label it finds with its page
+              number and confidence, so packing slips and instructions are left
+              out.
+            </p>
+          </details>
+          <details>
+            <summary>What if no label is found?</summary>
+            <p>
+              Make sure the barcode and address block are visible in the file,
+              then try again with another PDF or screenshot.
+            </p>
+          </details>
+          <details>
+            <summary>Does it work on my phone?</summary>
+            <p>
+              Yes. It runs in any modern desktop or mobile browser with
+              JavaScript turned on.
+            </p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <footer class="app-footer">
+      <div class="footer-inner">
+        <span>CROP THIS LABEL · 100% PRIVATE · RUNS ENTIRELY IN YOUR BROWSER</span>
+        <span>STANDARD 4×6 THERMAL LABELS · FILES NEVER LEAVE YOUR DEVICE</span>
+      </div>
+    </footer>
     <noscript>
       <main>
         <h1>Crop This Label — 4×6 Thermal Label Cropper</h1>
