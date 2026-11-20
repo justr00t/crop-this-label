@@ -862,17 +862,6 @@ function App() {
           </div>
         </section>
       </main>
-
-      <footer className="app-footer">
-        <div className="footer-inner">
-          <span>
-            CROP THIS LABEL · 100% PRIVATE · RUNS ENTIRELY IN YOUR BROWSER
-          </span>
-          <span>
-            STANDARD 4×6 THERMAL LABELS · FILES NEVER LEAVE YOUR DEVICE
-          </span>
-        </div>
-      </footer>
     </div>
   );
 }
